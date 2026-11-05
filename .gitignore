@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# 에디터 개인 설정
+.vscode/
+
+# npm 도구를 쓰게 될 경우
+node_modules/
+*.log
+
+# 실제 근무지 도면 (공개 금지)
+도면/
+floorplans/
+*.dwg

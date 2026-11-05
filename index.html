@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Facility Manager</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main id="app">
+    <div id="game">
+      <!-- 저해상도 도트 화면 (320×200을 확대 출력) -->
+      <canvas id="view" width="320" height="200"></canvas>
+      <!-- 한글이 뭉개지지 않도록 글자만 실제 해상도로 그리는 층 -->
+      <canvas id="hud-text"></canvas>
+    </div>
+
+    <p id="help">W/S 전진·후진 &nbsp;·&nbsp; A/D 회전 &nbsp;·&nbsp; E 또는 Space 수리</p>
+
+    <div id="touch" aria-label="터치 조작">
+      <div class="pad">
+        <button data-key="forward" class="up" aria-label="전진">▲</button>
+        <button data-key="left" class="lt" aria-label="왼쪽 회전">◀</button>
+        <button data-key="back" class="dn" aria-label="후진">▼</button>
+        <button data-key="right" class="rt" aria-label="오른쪽 회전">▶</button>
+      </div>
+      <button id="repair-btn" aria-label="수리">수리</button>
+    </div>
+  </main>
+
+  <!-- 순서 중요: 뒤 파일이 앞 파일의 상수·함수를 사용 -->
+  <script src="js/progress.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/textures.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

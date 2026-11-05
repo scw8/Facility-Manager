@@ -1,0 +1,133 @@
+@font-face {
+  font-family: "Galmuri11";
+  src: url("../fonts/Galmuri11.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --touch-height: 0px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #0b0d0c;
+  color: #9aa39d;
+  font-family: "Galmuri11", ui-monospace, Menlo, monospace;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* 16:10 비율을 유지하면서 화면에 들어가는 최대 크기 */
+#game {
+  position: relative;
+  width: min(100vw, calc((100dvh - var(--touch-height) - 40px) * 1.6));
+  aspect-ratio: 16 / 10;
+  background: #000;
+}
+
+#game canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#view {
+  image-rendering: pixelated;
+}
+
+#hud-text {
+  pointer-events: none;
+}
+
+#help {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+#touch {
+  display: none;
+}
+
+/* 터치 기기에서만 화면 아래 버튼 표시 */
+@media (pointer: coarse) {
+  :root {
+    --touch-height: 136px;
+  }
+
+  #help {
+    display: none;
+  }
+
+  #touch {
+    width: 100%;
+    max-width: 640px;
+    height: var(--touch-height);
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    touch-action: none;
+  }
+
+  #touch button {
+    border: 2px solid #3a423d;
+    border-radius: 6px;
+    background: #1c211e;
+    color: #d6ddd8;
+    font: inherit;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #touch button.active {
+    background: #3a423d;
+  }
+
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 42px);
+    gap: 2px;
+  }
+
+  .up { grid-area: 1 / 2; }
+  .lt { grid-area: 2 / 1; }
+  .dn { grid-area: 3 / 2; }
+  .rt { grid-area: 2 / 3; }
+
+  #touch #repair-btn {
+    width: 92px;
+    height: 92px;
+    border-color: #a8861c;
+    border-radius: 50%;
+    background: #3d3210;
+    color: #ffd84a;
+    font-size: 18px;
+  }
+
+  #touch #repair-btn.active {
+    background: #6b5718;
+  }
+}
