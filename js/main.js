@@ -1,9 +1,18 @@
-// 게임 루프와 입력, 플레이어 이동, 수리 처리.
+// 게임 시작점: 상태 생성, 저장 불러오기, 플레이어 이동, 게임 루프.
+
+import { START_MAP_ID } from '../data/maps/index.js';
+import { createWorld } from './world/world.js';
+import { setupInput } from './core/input.js';
+import { beginTransition, updateTransition } from './core/transition.js';
+import { saveGame, loadGame, clearSave } from './core/save.js';
+import { createProgress, addFatigueFromWalking } from './systems/progress.js';
+import { findTarget, promptFor, interact } from './systems/interactions.js';
+import { createRenderer } from './render/renderer.js';
+import { createTextLayer, drawHudGraphics, drawHudText, HUD_FONT, COLOR } from './render/hud.js';
 
 const MOVE_SPEED = 2.6; // 칸/초
 const TURN_SPEED = 2.2; // 라디안/초
 const PLAYER_RADIUS = 0.25;
-const REPAIR_RANGE = 1.8; // 칸
 const MAX_FRAME_SECONDS = 0.05; // 탭 전환 등으로 프레임이 튀어도 벽을 뚫지 않게 제한
 
 const CLOCK_START_MINUTES = 2 * 60; // AM 02:00 시작
@@ -11,14 +20,7 @@ const CLOCK_MINUTES_PER_SECOND = 1;
 
 const INITIAL_FAULTS = 2;
 const NEXT_FAULT_DELAY = 3; // 고장을 전부 처리한 뒤 새 고장까지 걸리는 시간(초)
-
-const OK_SECONDS = 1.2;
-const SMILE_SECONDS = 1.5;
-const PROMOTION_SECONDS = 2.5;
-
-const COLOR_GOOD = '#8dff9d';
-const COLOR_ALERT = '#ff8a6a';
-const COLOR_INFO = '#f2f2e6';
+const AUTOSAVE_SECONDS = 5;
 
 const viewCanvas = document.getElementById('view');
 const viewCtx = viewCanvas.getContext('2d');
@@ -26,18 +28,22 @@ viewCtx.imageSmoothingEnabled = false;
 
 const renderer = createRenderer(viewCtx);
 const textLayer = createTextLayer(document.getElementById('hud-text'), viewCanvas);
+const world = createWorld();
 
 const state = {
-  player: { ...PLAYER_START, walked: 0 },
+  mapId: START_MAP_ID,
+  player: { ...world.getMap(START_MAP_ID).spawn, walked: 0 },
   progress: createProgress(),
   clockMinutes: CLOCK_START_MINUTES,
   time: 0,
   nextFaultTimer: 0,
   lastRepaired: null,
-  repairPrompt: false,
+  prompt: null,
+  transition: null,
+  autosaveTimer: AUTOSAVE_SECONDS,
   effects: {
     message: '',
-    messageColor: COLOR_INFO,
+    messageColor: COLOR.INFO,
     messageTimer: 0,
     okTimer: 0,
     smileTimer: 0,
@@ -46,134 +52,57 @@ const state = {
   },
 };
 
-// ----- 입력 -----
+const currentMap = () => world.getMap(state.mapId);
 
-const input = { forward: false, back: false, left: false, right: false };
-
-const KEY_BINDINGS = {
-  KeyW: 'forward',
-  ArrowUp: 'forward',
-  KeyS: 'back',
-  ArrowDown: 'back',
-  KeyA: 'left',
-  ArrowLeft: 'left',
-  KeyD: 'right',
-  ArrowRight: 'right',
-};
-
-window.addEventListener('keydown', (e) => {
-  const action = KEY_BINDINGS[e.code];
-  if (action) {
-    input[action] = true;
-    e.preventDefault();
-  } else if (e.code === 'KeyE' || e.code === 'Space') {
-    if (!e.repeat) tryRepair();
-    e.preventDefault();
-  }
-});
-
-window.addEventListener('keyup', (e) => {
-  const action = KEY_BINDINGS[e.code];
-  if (action) input[action] = false;
-});
-
-// 창이 포커스를 잃으면 keyup을 받지 못해 키가 눌린 채로 남는 것을 막는다
-window.addEventListener('blur', () => {
-  for (const key of Object.keys(input)) input[key] = false;
-});
-
-for (const button of document.querySelectorAll('#touch [data-key]')) {
-  const action = button.dataset.key;
-  const release = () => {
-    input[action] = false;
-    button.classList.remove('active');
-  };
-  button.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    input[action] = true;
-    button.classList.add('active');
-  });
-  button.addEventListener('pointerup', release);
-  button.addEventListener('pointercancel', release);
-  button.addEventListener('pointerleave', release);
-}
-
-const repairButton = document.getElementById('repair-btn');
-repairButton.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  repairButton.classList.add('active');
-  tryRepair();
-});
-for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
-  repairButton.addEventListener(type, () => repairButton.classList.remove('active'));
-}
-
-// 길게 눌렀을 때 뜨는 메뉴가 조작을 끊지 않게 한다
-document.getElementById('touch').addEventListener('contextmenu', (e) => e.preventDefault());
-
-// ----- 알림 -----
-
-function showMessage(text, color = COLOR_INFO, seconds = 2.5) {
+function showMessage(text, color = COLOR.INFO, seconds = 2.5) {
   const { effects } = state;
   effects.message = text;
   effects.messageColor = color;
   effects.messageTimer = seconds;
 }
 
-// ----- 수리 -----
+// 상호작용 오브젝트가 게임에 영향을 줄 때 쓰는 창구
+const game = {
+  state,
+  world,
+  showMessage,
+  goTo(mapId, spawn) {
+    const map = world.getMap(mapId);
+    beginTransition(state, mapId, spawn || map.spawn, map.name);
+  },
+  onRepaired() {
+    if (world.countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_DELAY;
+  },
+};
 
-// 바라보는 방향 수리 거리 안에 있는 분전반을 찾는다
-function panelInSight() {
-  const { player } = state;
-  const hit = castRay(player.x, player.y, Math.cos(player.angle), Math.sin(player.angle));
-  if (hit.tile !== TILE.PANEL || hit.dist > REPAIR_RANGE) return null;
-  return panelAt(hit.cellX, hit.cellY);
+function switchMap(mapId, spawn) {
+  state.mapId = mapId;
+  Object.assign(state.player, spawn);
+  saveGame(state, world);
 }
 
-function tryRepair() {
-  const panel = panelInSight();
-  if (!panel) {
-    showMessage('수리할 대상이 없습니다');
-    return;
-  }
-  if (panel.state !== PANEL_STATE.FAULT) {
-    showMessage('이상 없음');
-    return;
-  }
-
-  const { progress, effects } = state;
-  const promotions = completeRepair(progress, panel.faultType);
-  panel.state = PANEL_STATE.FIXED;
-  panel.faultType = null;
-  state.lastRepaired = panel;
-
-  effects.okTimer = OK_SECONDS;
-  effects.smileTimer = SMILE_SECONDS;
-  showMessage('누전 수리 완료', COLOR_GOOD);
-
-  if (promotions.length > 0) {
-    effects.promotionRank = promotions[promotions.length - 1];
-    effects.promotionTimer = PROMOTION_SECONDS;
-    effects.smileTimer = PROMOTION_SECONDS;
-  }
-
-  if (countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_DELAY;
-}
+const input = setupInput({
+  onInteract() {
+    if (state.transition) return;
+    interact(findTarget(currentMap(), state.player), game);
+  },
+});
 
 // ----- 플레이어 이동 -----
 
-function isBlocked(x, y) {
+function isBlocked(map, x, y) {
   const r = PLAYER_RADIUS;
   return (
-    !isWalkable(Math.floor(x - r), Math.floor(y - r)) ||
-    !isWalkable(Math.floor(x + r), Math.floor(y - r)) ||
-    !isWalkable(Math.floor(x - r), Math.floor(y + r)) ||
-    !isWalkable(Math.floor(x + r), Math.floor(y + r))
+    !map.isWalkable(Math.floor(x - r), Math.floor(y - r)) ||
+    !map.isWalkable(Math.floor(x + r), Math.floor(y - r)) ||
+    !map.isWalkable(Math.floor(x - r), Math.floor(y + r)) ||
+    !map.isWalkable(Math.floor(x + r), Math.floor(y + r))
   );
 }
 
 function updatePlayer(dt) {
   const { player, progress } = state;
+  const map = currentMap();
 
   const turn = Number(input.right) - Number(input.left);
   player.angle += turn * TURN_SPEED * dt;
@@ -187,8 +116,8 @@ function updatePlayer(dt) {
   const startY = player.y;
 
   // 축별로 따로 검사해서 벽을 따라 미끄러지게 한다
-  if (!isBlocked(player.x + stepX, player.y)) player.x += stepX;
-  if (!isBlocked(player.x, player.y + stepY)) player.y += stepY;
+  if (!isBlocked(map, player.x + stepX, player.y)) player.x += stepX;
+  if (!isBlocked(map, player.x, player.y + stepY)) player.y += stepY;
 
   // 실제로 움직인 거리만 피로도에 반영한다 (벽에 비비는 동안은 오르지 않음)
   const moved = Math.hypot(player.x - startX, player.y - startY);
@@ -209,24 +138,30 @@ function update(dt) {
   effects.smileTimer = Math.max(0, effects.smileTimer - dt);
   effects.promotionTimer = Math.max(0, effects.promotionTimer - dt);
 
-  updatePlayer(dt);
+  updateTransition(state, dt, switchMap);
+  if (!state.transition) updatePlayer(dt);
 
   if (state.nextFaultTimer > 0) {
     state.nextFaultTimer -= dt;
-    if (state.nextFaultTimer <= 0) {
-      spawnFault(state.lastRepaired);
-      showMessage('새 고장 발생! 미니맵을 확인하세요', COLOR_ALERT);
+    if (state.nextFaultTimer <= 0 && world.spawnFault(state.lastRepaired)) {
+      showMessage('새 고장 발생! 미니맵을 확인하세요', COLOR.ALERT);
     }
   }
 
-  const panel = panelInSight();
-  state.repairPrompt = panel !== null && panel.state === PANEL_STATE.FAULT;
+  state.prompt = promptFor(findTarget(currentMap(), state.player));
+
+  state.autosaveTimer -= dt;
+  if (state.autosaveTimer <= 0) {
+    state.autosaveTimer = AUTOSAVE_SECONDS;
+    saveGame(state, world);
+  }
 }
 
 function draw() {
-  renderer.drawWorld(state.player, state.time);
-  drawHudGraphics(viewCtx, state);
-  drawHudText(textLayer, state);
+  const map = currentMap();
+  renderer.drawWorld(map, state.player, state.time);
+  drawHudGraphics(viewCtx, state, map);
+  drawHudText(textLayer, state, map);
 }
 
 let lastFrame = performance.now();
@@ -239,8 +174,52 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-for (let i = 0; i < INITIAL_FAULTS; i++) spawnFault();
-showMessage('당직 시작. 고장난 분전반을 수리하세요', COLOR_ALERT, 4);
+// ----- 저장 -----
+
+let resetting = false;
+
+// 탭을 닫거나 다른 앱으로 넘어갈 때 저장한다
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && !resetting) saveGame(state, world);
+});
+window.addEventListener('pagehide', () => {
+  if (!resetting) saveGame(state, world);
+});
+
+document.getElementById('reset-btn').addEventListener('click', (e) => {
+  e.currentTarget.blur(); // 포커스가 남으면 Space(상호작용)가 버튼을 다시 누른다
+  if (!window.confirm('저장된 진행 상황을 지우고 처음부터 시작할까요?')) return;
+  resetting = true;
+  clearSave();
+  window.location.reload();
+});
+
+// ----- 시작 -----
+
+if (loadGame(state, world)) {
+  // 고장이 하나도 없고 다음 고장 예약도 없으면 일거리가 끊기므로 다시 예약한다
+  if (world.countFaults() === 0 && state.nextFaultTimer <= 0) {
+    state.nextFaultTimer = NEXT_FAULT_DELAY;
+  }
+  showMessage('이어서 근무합니다', COLOR.INFO, 3);
+} else {
+  for (let i = 0; i < INITIAL_FAULTS; i++) world.spawnFault();
+  showMessage('당직 시작. 고장난 분전반을 수리하세요', COLOR.ALERT, 4);
+}
+
+// 개발용: 주소에 ?debug를 붙이면 콘솔에서 상태를 보고 프레임을 직접 돌릴 수 있다
+if (new URLSearchParams(window.location.search).has('debug')) {
+  window.__game = {
+    state,
+    world,
+    input,
+    interact: () => interact(findTarget(currentMap(), state.player), game),
+    step(seconds, dt = 1 / 60) {
+      for (let t = 0; t < seconds; t += dt) update(dt);
+      draw();
+    },
+  };
+}
 
 document.fonts.load(`11px "${HUD_FONT}"`, '처리');
 requestAnimationFrame(frame);

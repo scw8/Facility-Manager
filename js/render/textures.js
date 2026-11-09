@@ -1,7 +1,9 @@
+import { TILE } from '../world/tiles.js';
+
 // 이미지 파일 없이 코드로 만드는 32×32 텍스처.
 // 각 텍스처는 Uint32Array(픽셀 하나 = 0xAABBGGRR, ImageData와 같은 배치).
 
-const TEX_SIZE = 32;
+export const TEX_SIZE = 32;
 
 // 새로고침해도 무늬가 같도록 고정 시드 난수를 쓴다.
 function makeRandom(seed) {
@@ -301,7 +303,7 @@ const LAMP_GREEN = [60, 255, 110];
 const NO_TINT = [0, 0, 0];
 
 // 같은 무늬가 반복되어 보이지 않도록 칸마다 고를 변형을 여러 장 만든다
-const TEXTURE_VARIANTS = 3;
+export const TEXTURE_VARIANTS = 3;
 
 function createVariants(paint, wear) {
   const variants = [];
@@ -311,7 +313,7 @@ function createVariants(paint, wear) {
   return variants;
 }
 
-const TEXTURES = {
+export const TEXTURES = {
   [TILE.CONCRETE]: createVariants(paintConcrete, WEAR.concrete),
   [TILE.PIPES]: createVariants(paintPipes, WEAR.pipes),
   [TILE.DOOR]: [createTexture(paintDoor, WEAR.door)],

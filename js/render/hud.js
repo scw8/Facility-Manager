@@ -2,14 +2,19 @@
 // 그림은 저해상도 화면(view)에, 글자는 고해상도 층(hud-text)에 그린다.
 // 두 층 모두 좌표는 320×200 기준이다.
 
-const HUD_FONT = 'Galmuri11';
+import { RANKS, expPercent, isTopRank } from '../systems/progress.js';
+import { transitionAlpha } from '../core/transition.js';
+import { SCREEN_W, SCREEN_H } from './renderer.js';
+import { drawMinimap, minimapRect } from './minimap.js';
+
+export const HUD_FONT = 'Galmuri11';
 const HUD_FONT_GRID = 5.5; // Galmuri11(11px 격자)이 깔끔하게 보이는 크기 단위
 const HUD_FONT_SIZE = 8; // 320×200 기준 글자 크기
 const HUD_FONT_SIZE_SMALL = 6; // 좌측 하단 캐릭터 상태 묶음용
 const HUD_MARGIN = 4;
-const REPAIR_PROMPT = window.matchMedia('(pointer: coarse)').matches
-  ? '누전 수리 가능'
-  : '[E] 누전 수리';
+export const PROMOTION_SECONDS = 2.5;
+
+export const COLOR = { GOOD: '#8dff9d', ALERT: '#ff8a6a', INFO: '#f2f2e6' };
 
 // 캐릭터 상태 묶음. 하단 중앙의 아이템칸 자리를 비워 두려고 x=62 안쪽에 맞춘다.
 const FACE_SIZE = 20;
@@ -18,7 +23,6 @@ const FACE_Y = 169;
 const RANK_Y = 162;
 const FATIGUE_X = FACE_X + FACE_SIZE + 3;
 const EXP_BAR = { x: HUD_MARGIN, y: 192, w: 30, h: 4 };
-const PROCESSED_Y = MINIMAP_Y + MINIMAP_H + 2; // 미니맵 바로 아래
 
 const OUTLINE_OFFSETS = [
   [-1, -1], [0, -1], [1, -1],
@@ -28,7 +32,7 @@ const OUTLINE_OFFSETS = [
 
 // ----- 글자 층 -----
 
-function createTextLayer(canvas, viewCanvas) {
+export function createTextLayer(canvas, viewCanvas) {
   const ctx = canvas.getContext('2d');
   let scale = 1;
 
@@ -214,7 +218,7 @@ function formatClock(minutes) {
   return `AM ${h}:${m}`;
 }
 
-function drawHudGraphics(ctx, state) {
+export function drawHudGraphics(ctx, state, map) {
   const { progress, effects, player, time } = state;
 
   drawMultimeter(ctx, player.walked * 3.2, effects.okTimer > 0, effects.okTimer > 0 ? 5 : 0);
@@ -229,7 +233,7 @@ function drawHudGraphics(ctx, state) {
   ctx.fillStyle = '#6dd66d';
   ctx.fillRect(bar.x, bar.y, Math.round((bar.w * expPercent(progress)) / 100), bar.h);
 
-  drawMinimap(ctx, player, time);
+  drawMinimap(ctx, map, player, time);
 
   // 승진 연출: 화면 전체가 금색으로 번쩍였다 사라진다
   if (effects.promotionTimer > 0) {
@@ -237,15 +241,31 @@ function drawHudGraphics(ctx, state) {
     ctx.fillStyle = `rgba(255, 214, 70, ${0.34 * strength * strength})`;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
   }
+
+  // 맵 전환 중 검은 덮개
+  const fade = transitionAlpha(state.transition);
+  if (fade > 0) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+  }
 }
 
-function drawHudText(layer, state) {
-  const { progress, effects, clockMinutes, repairPrompt } = state;
+export function drawHudText(layer, state, map) {
+  const { progress, effects, clockMinutes, prompt, transition } = state;
 
   layer.clear();
 
+  // 화면이 완전히 어두운 동안에는 이동할 맵 이름만 보여준다
+  const fade = transitionAlpha(transition);
+  if (fade >= 1) {
+    layer.text(transition.label, SCREEN_W / 2, SCREEN_H / 2 - 6, { align: 'center' });
+    return;
+  }
+
+  const mini = minimapRect(map);
   layer.text(formatClock(clockMinutes), HUD_MARGIN, HUD_MARGIN);
-  layer.text(`처리 ${progress.repairs}`, MINIMAP_X + MINIMAP_W, PROCESSED_Y, { align: 'right' });
+  layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 10, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
+  layer.text(`처리 ${progress.repairs}`, mini.x + mini.w, mini.y + mini.h + 2, { align: 'right' });
 
   if (effects.messageTimer > 0) {
     layer.text(effects.message, SCREEN_W / 2, 24, {
@@ -258,8 +278,8 @@ function drawHudText(layer, state) {
   if (effects.promotionTimer > 0) {
     layer.text('승진!', SCREEN_W / 2, 58, { align: 'center', color: '#ffe046', size: 16 });
     layer.text(effects.promotionRank, SCREEN_W / 2, 78, { align: 'center', color: '#ffe046' });
-  } else if (repairPrompt) {
-    layer.text(REPAIR_PROMPT, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
+  } else if (prompt && !transition) {
+    layer.text(prompt, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
   }
 
   // 좌측 하단 캐릭터 상태 묶음

@@ -66,6 +66,21 @@ body {
   text-align: center;
 }
 
+#reset-btn {
+  margin-left: 12px;
+  padding: 1px 8px;
+  border: 1px solid #3a423d;
+  border-radius: 4px;
+  background: transparent;
+  color: #7d8680;
+  font: inherit;
+  cursor: pointer;
+}
+
+#reset-btn:hover {
+  color: #d6ddd8;
+}
+
 #touch {
   display: none;
 }
@@ -117,7 +132,7 @@ body {
   .dn { grid-area: 3 / 2; }
   .rt { grid-area: 2 / 3; }
 
-  #touch #repair-btn {
+  #touch #use-btn {
     width: 92px;
     height: 92px;
     border-color: #a8861c;
@@ -127,7 +142,7 @@ body {
     font-size: 18px;
   }
 
-  #touch #repair-btn.active {
+  #touch #use-btn.active {
     background: #6b5718;
   }
 }
