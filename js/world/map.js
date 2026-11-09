@@ -39,6 +39,13 @@ export function createMap(data) {
     }
   }
 
+  // 타일 오브젝트에 맵 데이터의 추가 정보(이름, 구역 등)를 덧붙인다
+  for (const props of data.objects || []) {
+    const obj = objects.get(cellKey(props.x, props.y));
+    if (!obj) throw new Error(`맵 ${data.id}: (${props.x}, ${props.y})에 오브젝트 타일이 없습니다`);
+    Object.assign(obj, props);
+  }
+
   for (const door of data.doors || []) {
     if (tiles[door.y]?.[door.x] !== TILE.DOOR) {
       throw new Error(`맵 ${data.id}: (${door.x}, ${door.y})에 문 타일이 없습니다`);

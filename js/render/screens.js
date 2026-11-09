@@ -1,5 +1,5 @@
 // 게임을 멈추고 띄우는 안내 화면 (업무일지, 휴무일, 기상 등).
-// screen = { title, subtitle, lines: [{ text, color }], options?, selected?, action }
+// screen = { title, subtitle, lines: [{ text, color, size }], options?, selected?, action }
 // options가 있으면 선택지 화면이 된다: [{ label, desc }]
 
 import { SCREEN_W, SCREEN_H } from './renderer.js';
@@ -51,7 +51,11 @@ export function drawScreenText(layer, screen) {
   }
 
   screen.lines.forEach((line, i) => {
-    layer.text(line.text, x + 12, y + 35 + i * LINE_HEIGHT, { ...plain, color: line.color || INK });
+    layer.text(line.text, x + 12, y + 35 + i * LINE_HEIGHT, {
+      ...plain,
+      color: line.color || INK,
+      size: line.size || 8,
+    });
   });
 
   if (screen.options) {

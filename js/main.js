@@ -15,9 +15,20 @@ import {
   cancelSkip,
   absoluteMinutes,
   formatDate,
+  formatTime,
+  shiftMinute,
   SHIFT_START,
 } from './core/clock.js';
-import { createProgress, expPercent, isTopRank, RANKS, FAULT_EXP } from './systems/progress.js';
+import { createProgress, expPercent, isTopRank, addExp, RANKS, FAULT_EXP } from './systems/progress.js';
+import {
+  createInspection,
+  applyInspectionToWorld,
+  inspectionLines,
+  progressCount,
+  scoreInspection,
+  SCORE,
+  INSPECTION_DEADLINE,
+} from './systems/inspection.js';
 import {
   createStats,
   tickStats,
@@ -78,9 +89,11 @@ const state = {
   phase: 'home', // 'home' 출근 전 집 | 'work' 근무 중
   morning: createMorning(), // 아침 루틴 (씻었는지, 먹었는지)
   offday: { slots: [] }, // 휴무일에 고른 활동 id들
+  inspection: null, // 오늘의 검침 데이터 (근무 시작 때 만든다)
+  inspecting: null, // 검침 화면에서 보고 있는 지점 key
   shift: null, // createShiftLog()로 채운다
   // 게임을 멈추고 띄우는 화면:
-  // 'wake' 기상 시각 | 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
+  // 'wake' 기상 시각 | 'inspect' 검침 | 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
   screen: 'wake',
   menuIndex: 0, // 선택지 화면에서 고른 줄
   work: null, // 진행 중인 작업 게이지
@@ -113,6 +126,7 @@ function createShiftLog() {
     reputationStart: state.stats.reputation,
     notes: [], // 업무일지에 덧붙일 특이사항
     ending: null, // 쓰러졌다면 'fatigue' | 'hunger' | 'burnout'
+    inspection: null, // 퇴근 때 매긴 검침 결과
   };
 }
 state.shift = createShiftLog();
@@ -143,6 +157,10 @@ const game = {
     startWork(state, job);
   },
   commute: () => commute(),
+  openInspection(key) {
+    state.inspecting = key;
+    openScreen('inspect');
+  },
   onRepaired(panel, faultType, promotions) {
     const { shift, stats } = state;
     shift.repairs += 1;
@@ -170,8 +188,31 @@ function stopActivities() {
   cancelSkip(state.clock);
 }
 
+// 검침을 채점해 경험치·평판에 반영하고 업무일지에 남긴다.
+// countUnfinished: 마감 전에 쓰러졌다면 미완료 감점을 하지 않는다
+function finishInspection(countUnfinished) {
+  const { shift, stats } = state;
+  if (!state.inspection || shift.inspection) return;
+  const result = scoreInspection(state.inspection);
+  if (result.notDone && !countUnfinished) {
+    result.reputation -= SCORE.notDone.reputation;
+    result.stress -= SCORE.notDone.stress;
+    result.notDone = false;
+  }
+  shift.inspection = result;
+  shift.exp += result.exp;
+  shift.promotions.push(...addExp(state.progress, result.exp));
+  applyEffect(stats, { reputation: result.reputation, stress: result.stress });
+
+  if (result.missed) shift.notes.push(`검침: 놓친 이상 ${result.missed}곳 (평판 ${result.missed * SCORE.missed.reputation})`);
+  if (result.falseAlarms) shift.notes.push(`검침: 잘못된 이상 보고 ${result.falseAlarms}곳`);
+  if (result.unfixed) shift.notes.push(`검침: 누수 배관 미교체 (평판 ${result.unfixed * SCORE.unfixedLeak.reputation})`);
+  if (result.notDone) shift.notes.push(`검침 미완료 (평판 ${SCORE.notDone.reputation})`);
+}
+
 function endShift() {
   stopActivities();
+  finishInspection(true);
   const { stats, shift } = state;
   if (stats.hygiene <= LIMITS.dirty) {
     applyEffect(stats, EFFECTS.dirtyAtShiftEnd);
@@ -183,6 +224,7 @@ function endShift() {
 
 function collapse(reason) {
   stopActivities();
+  finishInspection(state.clock.minutes >= shiftMinute(INSPECTION_DEADLINE));
   state.shift.ending = reason;
   applyEffect(state.stats, reason === 'burnout' ? EFFECTS.burnout : EFFECTS.collapse);
   state.screen = 'collapse';
@@ -242,6 +284,9 @@ function commute() {
   }
   if (world.countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_MINUTES;
 
+  state.inspection = createInspection(world, state.clock.day);
+  applyInspectionToWorld(state.inspection, world);
+
   beginTransition(state, office.id, office.spawn, '출근 중…');
 }
 
@@ -257,8 +302,14 @@ function openScreen(kind) {
 }
 
 // 지금 화면의 선택지 (없으면 null)
+const INSPECT_OPTIONS = [
+  { label: '정상', desc: '이상 없음' },
+  { label: '이상', desc: '이상 보고' },
+];
+
 function screenOptions() {
   if (state.screen === 'wake') return WAKE_OPTIONS;
+  if (state.screen === 'inspect') return INSPECT_OPTIONS;
   if (state.screen === 'offday' && state.offday.slots.length < OFFDAY_SLOTS.length) {
     return OFFDAY_ACTIVITIES;
   }
@@ -272,6 +323,9 @@ function advanceScreen() {
     case 'wake':
       wakeAtHome(options[state.menuIndex]);
       return;
+    case 'inspect':
+      judgeInspection(state.menuIndex === 0 ? 'normal' : 'abnormal');
+      break;
     case 'collapse':
       openScreen(state.stats.reputation <= 0 ? 'fired' : 'report');
       break;
@@ -300,6 +354,28 @@ function advanceScreen() {
   saveGame(state, world);
 }
 
+function judgeInspection(verdict) {
+  const key = state.inspecting;
+  const point = state.inspection.points[key];
+  const [mapId, cell] = key.split(':');
+  const obj = world.getMap(mapId).objects.get(cell);
+  point.judged = verdict;
+  state.screen = null;
+  state.inspecting = null;
+
+  if (verdict === 'abnormal' && obj.leaking) {
+    showMessage('누수 확인! 누르고 있으면 배관을 교체합니다', COLOR.ALERT, 3.5);
+  } else {
+    showMessage(`${obj.name}: ${verdict === 'normal' ? '정상' : '이상'}으로 기록`);
+  }
+
+  const { judged, total } = progressCount(state.inspection);
+  if (judged === total) {
+    state.inspection.done = true;
+    showMessage('검침 완료! 이제 샤워실에서 씻을 수 있습니다', COLOR.GOOD, 3.5);
+  }
+}
+
 function moveMenu({ move, pick }) {
   const options = screenOptions();
   if (!options) return;
@@ -316,7 +392,16 @@ const schedule = createSchedule([
   { time: '12:00', run: () => showMessage('점심시간입니다. 구내식당으로!', COLOR.INFO, 3.5) },
   { time: '13:00', run: () => showMessage('점심시간이 끝났습니다') },
   { time: '18:00', run: () => showMessage('저녁시간입니다. 구내식당으로!', COLOR.INFO, 3.5) },
-  { time: '19:00', run: () => showMessage('검침 시간입니다 (검침 기능은 준비 중)', COLOR.ALERT, 3.5) },
+  {
+    time: '19:00',
+    run: () => showMessage('검침 시간! 지하 1층 기계실·전기실·비트를 점검하세요', COLOR.ALERT, 4),
+  },
+  {
+    time: INSPECTION_DEADLINE,
+    run: () => {
+      if (!state.inspection?.done) showMessage('검침 마감 시간이 지났습니다', COLOR.ALERT, 3.5);
+    },
+  },
   { time: '22:00', run: () => showMessage('야간 휴게 시간입니다. 휴게실에서 쉴 수 있습니다') },
   { time: '07:30', run: () => showMessage('퇴근 30분 전입니다') },
   { time: '08:00', run: endShift },
@@ -341,13 +426,17 @@ function screenContent(kind) {
     const exp = isTopRank(progress) ? 'MAX' : `${expPercent(progress)}%`;
     const repStart = Math.round(shift.reputationStart);
     const repNow = Math.round(stats.reputation);
+    const insp = shift.inspection;
     const lines = [
       { text: `처리 ${shift.repairs}건 · 경험치 +${shift.exp}` },
       {
-        text: `승진: ${promoted ? shift.promotions.join(' → ') : '없음'}`,
+        text: `직급: ${RANKS[progress.rank]} (EXP ${exp})${promoted ? ` · 승진! ${shift.promotions.join(' → ')}` : ''}`,
         color: promoted ? '#9a6a00' : undefined,
       },
-      { text: `현재 직급: ${RANKS[progress.rank]} (EXP ${exp})` },
+      {
+        text: insp ? `검침: ${insp.total}곳 중 ${insp.correct}곳 정확 판정` : '검침: 기록 없음',
+        color: insp && insp.correct < insp.total ? '#a83020' : undefined,
+      },
       {
         text: `평판: ${repStart} → ${repNow} (${signed(repNow - repStart)})`,
         color: repNow < repStart ? '#a83020' : undefined,
@@ -360,7 +449,7 @@ function screenContent(kind) {
       lines.push({ text: `고장 방치 ${shift.neglected}회 (평판 감점)`, color: '#a83020' });
     }
     for (const note of shift.notes) lines.push({ text: note, color: '#a83020' });
-    return { title: '업무일지', subtitle, lines: lines.slice(0, 7), action: '퇴근하기' };
+    return { title: '업무일지', subtitle, lines: lines.slice(0, 8), action: '퇴근하기' };
   }
 
   if (kind === 'collapse') {
@@ -395,6 +484,21 @@ function screenContent(kind) {
     text: `피로 ${Math.round(stats.fatigue)} · 포만 ${Math.round(stats.satiety)} · 위생 ${Math.round(stats.hygiene)} · 스트레스 ${Math.round(stats.stress)}`,
     color: '#5a5648',
   };
+
+  if (kind === 'inspect') {
+    const [mapId, cell] = state.inspecting.split(':');
+    const obj = world.getMap(mapId).objects.get(cell);
+    const point = state.inspection.points[state.inspecting];
+    return {
+      title: obj.name,
+      subtitle: `검침 · ${formatTime(clock.minutes)}`,
+      lines: inspectionLines(obj, point).map((line) =>
+        typeof line === 'string' ? { text: line, size: 7 } : { text: line.text, size: 6, color: '#6a5a30' }
+      ),
+      options: INSPECT_OPTIONS,
+      selected: state.menuIndex,
+    };
+  }
 
   if (kind === 'wake') {
     return {
@@ -624,6 +728,7 @@ document.getElementById('reset-btn').addEventListener('click', (e) => {
 // ----- 시작 -----
 
 if (loadGame(state, world)) {
+  applyInspectionToWorld(state.inspection, world);
   // 고장이 하나도 없고 다음 고장 예약도 없으면 일거리가 끊기므로 다시 예약한다
   if (world.countFaults() === 0 && state.nextFaultTimer <= 0) {
     state.nextFaultTimer = nextFaultDelay();

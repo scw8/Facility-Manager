@@ -172,6 +172,11 @@ const WEAR = {
     chips: { count: 4, color: [22, 22, 22] },
   },
   lamp: { seed: 701, grime: 0.12 },
+  device: {
+    seed: 1401,
+    grime: 0.14,
+    patch: { color: [110, 100, 80], amount: 0.3, threshold: 0.66 },
+  },
   wallpaper: {
     seed: 1201,
     grime: 0.1,
@@ -449,6 +454,93 @@ function paintWood(put) {
   }
 }
 
+// 콘크리트 벽에 설비를 붙일 때 바탕
+function paintDeviceWall(put) {
+  const rnd = makeRandom(131);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const v = 100 + rnd() * 12;
+      put(x, y, v, v, v - 4);
+    }
+  }
+}
+
+// 열교환기 감시반: 회색 함체 + 노란 터치화면 + 배관 그림 + 수치 칸
+function paintHmi(put, rect) {
+  paintDeviceWall(put);
+  rect(3, 4, 26, 22, 196, 198, 196); // 함체
+  rect(5, 6, 22, 15, 60, 60, 56);
+  rect(6, 7, 20, 13, 214, 206, 140); // 화면
+  rect(6, 7, 20, 2, 170, 40, 40); // 제목줄
+  rect(8, 11, 5, 3, 20, 20, 20);
+  rect(9, 12, 3, 1, 240, 220, 60); // 수치 칸
+  rect(19, 11, 5, 3, 20, 20, 20);
+  rect(20, 12, 3, 1, 240, 220, 60);
+  rect(8, 16, 16, 1, 180, 70, 50); // 배관
+  rect(14, 15, 3, 3, 90, 90, 100); // 펌프
+  rect(5, 23, 4, 1, 230, 120, 40); // 전원등
+}
+
+// 적산열량계(노란 명판) + 파란 원형 유량계
+function paintHeatMeter(put, rect) {
+  paintDeviceWall(put);
+  rect(2, 6, 14, 20, 236, 236, 230);
+  rect(3, 8, 12, 9, 236, 200, 30); // 노란 명판
+  rect(4, 10, 10, 3, 150, 160, 140); // LCD
+  rect(5, 11, 8, 1, 60, 70, 60);
+  for (let j = 0; j < 12; j++) {
+    for (let i = 0; i < 12; i++) {
+      const dx = i - 5.5;
+      const dy = j - 5.5;
+      const d = dx * dx + dy * dy;
+      if (d < 36) put(18 + i, 9 + j, 40, 150, 210);
+      if (d < 14) put(18 + i, 9 + j, 230, 120, 40); // 주황 표시창
+    }
+  }
+  rect(18, 22, 12, 4, 30, 30, 34); // 배선함
+  rect(20, 23, 2, 1, 80, 255, 80);
+}
+
+// 비상발전기: 녹색 엔진 함체 + 라디에이터 그릴 + 계기판
+function paintGenerator(put, rect) {
+  paintDeviceWall(put);
+  rect(1, 8, 30, 22, 50, 104, 60);
+  rect(1, 8, 30, 2, 80, 140, 90);
+  for (let y = 12; y < 27; y += 2) rect(3, y, 12, 1, 24, 40, 28); // 그릴
+  rect(18, 12, 10, 7, 30, 30, 32); // 계기판
+  rect(19, 13, 3, 2, 200, 200, 120);
+  rect(23, 13, 4, 2, 80, 220, 120);
+  rect(19, 16, 8, 1, 200, 60, 40);
+  rect(1, 29, 30, 3, 40, 40, 42); // 받침
+  rect(24, 2, 3, 6, 70, 70, 74); // 배기관
+}
+
+// 비트 내 배관: 어두운 구덩이 벽 + 굵은 배관 + 보온재. leak면 물방울과 물 고임
+function paintPit(put, rect, leak) {
+  const rnd = makeRandom(149);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const v = 58 + rnd() * 8;
+      put(x, y, v, v, v + 2);
+    }
+  }
+  const pipe = (top, color) => {
+    for (let j = 0; j < 6; j++) {
+      const shade = 1.2 - j * 0.12;
+      rect(0, top + j, TEX_SIZE, 1, color[0] * shade, color[1] * shade, color[2] * shade);
+    }
+  };
+  pipe(6, [200, 200, 196]); // 은색 보온재
+  pipe(17, leak ? [120, 130, 150] : [196, 196, 192]);
+  rect(14, 5, 3, 8, 150, 150, 156); // 이음부 플랜지
+  rect(14, 16, 3, 8, 150, 150, 156);
+  if (leak) {
+    for (const [x, y] of [[15, 24], [15, 26], [16, 28], [13, 25]]) rect(x, y, 1, 2, 120, 190, 240);
+    rect(6, 30, 20, 2, 60, 110, 170); // 물 고임
+    rect(9, 30, 6, 1, 150, 200, 240);
+  }
+}
+
 const LAMP_RED_ON = [255, 40, 30];
 const LAMP_OFF = [70, 74, 70];
 const LAMP_GREEN = [60, 255, 110];
@@ -473,6 +565,11 @@ export const TEXTURES = {
   [TILE.BED]: [createTexture(paintBed, WEAR.bed)],
   [TILE.SHOWER]: [createTexture(paintShower, WEAR.shower)],
   [TILE.TABLE]: [createTexture(paintTable, WEAR.table)],
+  [TILE.HMI]: [createTexture(paintHmi, WEAR.device)],
+  [TILE.HEATMETER]: [createTexture(paintHeatMeter, WEAR.device)],
+  [TILE.GENERATOR]: [createTexture(paintGenerator, WEAR.device)],
+  [TILE.PIT]: [createTexture((p, r) => paintPit(p, r, false), WEAR.device)],
+  pitLeak: createTexture((p, r) => paintPit(p, r, true), WEAR.device),
   panelNormal: createTexture((p, r) => paintPanel(p, r, LAMP_OFF, NO_TINT), WEAR.panel),
   panelFaultOn: createTexture((p, r) => paintPanel(p, r, LAMP_RED_ON, [110, -70, -80]), WEAR.panel),
   panelFaultOff: createTexture((p, r) => paintPanel(p, r, [120, 20, 16], [24, -30, -34]), WEAR.panel),

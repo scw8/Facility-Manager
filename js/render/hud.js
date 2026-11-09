@@ -327,6 +327,14 @@ export function drawHudText(layer, state, map) {
     return;
   }
   layer.text(`처리 ${progress.repairs}`, mini.x + mini.w, mini.y + mini.h + 2, { align: 'right' });
+  if (state.inspection && !state.inspection.done && isBetween(clock, '19:00', '08:00')) {
+    const points = Object.values(state.inspection.points);
+    const judged = points.filter((p) => p.judged).length;
+    layer.text(`검침 ${judged}/${points.length}`, mini.x + mini.w, mini.y + mini.h + 12, {
+      align: 'right',
+      color: '#ffd27a',
+    });
+  }
 
   if (effects.messageTimer > 0) {
     layer.text(effects.message, SCREEN_W / 2, 24, {

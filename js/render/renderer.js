@@ -113,6 +113,9 @@ export function createRenderer(ctx) {
   }
 
   function wallTexture(map, hit, blinkOn) {
+    if (hit.tile === TILE.PIT && map.objectAt(hit.cellX, hit.cellY).leaking) {
+      return TEXTURES.pitLeak;
+    }
     if (hit.tile !== TILE.PANEL) {
       const themed = hit.tile === TILE.CONCRETE && map.theme.wall;
       const variants = themed ? TEXTURES[map.theme.wall] : TEXTURES[hit.tile];
