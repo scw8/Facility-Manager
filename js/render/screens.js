@@ -1,6 +1,6 @@
 // 게임을 멈추고 띄우는 안내 화면 (업무일지, 휴무일, 기상 등).
 // screen = { title, subtitle, lines: [{ text, color, size }], options?, selected?, action }
-// options가 있으면 선택지 화면이 된다: [{ label, desc }]
+// options가 있으면 선택지 화면이 된다: [{ label, desc }]. closable이면 Esc로 닫을 수 있다고 안내한다
 
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
@@ -79,6 +79,7 @@ export function drawScreenText(layer, screen) {
     });
   }
 
-  const hint = screen.options ? MENU_HINT : `${KEY_HINT} ${screen.action}`;
+  const close = screen.closable && !TOUCH ? ' · Esc 닫기' : '';
+  const hint = screen.options ? MENU_HINT + close : `${KEY_HINT} ${screen.action}`;
   layer.text(hint, x + w / 2, y + h - 16, { ...plain, align: 'center', color: '#8a3a12', size: screen.options ? 6 : 8 });
 }

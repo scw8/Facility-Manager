@@ -394,6 +394,13 @@ function closeGuide() {
   state.tip = null;
 }
 
+// Esc: 공구실 보관함·쇼핑·도움말처럼 닫을 수 있는 창을 닫는다
+function closeScreen() {
+  if (state.screen === 'storage') state.screen = null;
+  else if (state.screen === 'shop') openScreen('offday');
+  else if (state.screen === 'intro' || state.screen === 'tip') closeGuide();
+}
+
 // 지금 화면의 선택지 (없으면 null)
 const CLOSE = 'close';
 const SHOP_OPTION = { id: 'shop', label: '인터넷 쇼핑', desc: '시간을 쓰지 않음' };
@@ -667,6 +674,7 @@ function screenContent(kind) {
         { label: '닫기' },
       ],
       selected: state.menuIndex,
+      closable: true,
     };
   }
 
@@ -683,6 +691,7 @@ function screenContent(kind) {
         { label: '돌아가기' },
       ],
       selected: state.menuIndex,
+      closable: true,
     };
   }
 
@@ -747,6 +756,7 @@ const input = setupInput({
     else if (e.pick !== undefined) selectSlot(state, e.pick);
   },
   onHelp: openHelp,
+  onBack: closeScreen,
   onWheel(delta) {
     if (!state.screen) cycleSlot(state, delta);
   },

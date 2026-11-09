@@ -193,8 +193,8 @@ function drawLcdText(ctx, str, centerX, y, color) {
 
 function drawMultimeter(ctx, bob, showOk, lift) {
   const w = 52;
-  const x = Math.round(SCREEN_W / 2 - w / 2 + Math.sin(bob) * 3);
-  const y = Math.round(132 - Math.abs(Math.cos(bob)) * 3 - lift);
+  const x = Math.round(SCREEN_W / 2 - w / 2 + 28 + Math.sin(bob) * 3);
+  const y = Math.round(140 - Math.abs(Math.cos(bob)) * 3 - lift);
   const h = SCREEN_H - y + 4;
   const rect = (color, rx, ry, rw, rh) => {
     ctx.fillStyle = color;
@@ -284,15 +284,16 @@ function drawFist(ctx, x, y, mirror = false) {
 
 // 한 손으로 든 아이템: 아이콘을 3배로 그리고 아래쪽 손잡이를 주먹이 감싼다
 function drawHeldItem(ctx, id, bob, lift) {
-  const x = Math.round(SCREEN_W / 2 + 6 + Math.sin(bob) * 3);
-  const y = Math.round(112 - Math.abs(Math.cos(bob)) * 3 - lift);
+  // 오른손잡이라 화면 오른쪽 아래에서 든다. 팔은 조금만 보이게 낮춘다
+  const x = Math.round(SCREEN_W / 2 + 42 + Math.sin(bob) * 3);
+  const y = Math.round(128 - Math.abs(Math.cos(bob)) * 3 - lift);
   drawIcon(ctx, id, x, y, 3);
   drawFist(ctx, x + 4, y + 26);
 }
 
 // 손과 든 물건을 따로 그린 뒤, 화면 속 조명처럼 어둡게 하고 거친 질감을 입혀
 // 배경 텍스처와 화질이 따로 놀지 않게 한다.
-const VIEW_MODEL = { x: 80, y: 100, w: 160, h: SCREEN_H - 100 };
+const VIEW_MODEL = { x: 100, y: 110, w: SCREEN_W - 100, h: SCREEN_H - 110 };
 const viewModelCanvas = document.createElement('canvas');
 viewModelCanvas.width = VIEW_MODEL.w;
 viewModelCanvas.height = VIEW_MODEL.h;

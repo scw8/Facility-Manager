@@ -1,5 +1,6 @@
 // 키보드·터치 입력. 이동 키와 사용 키(use)는 눌림 상태로, 사용 키를 누른 순간은 콜백으로 전달한다.
 // 위/아래(onMenu({ move }))와 숫자키(onMenu({ pick }))는 메뉴 선택이나 아이템 슬롯 선택에 쓴다.
+// Esc는 onBack()으로 열린 창을 닫는다.
 // 마우스 휠은 onWheel(±1), 게임 화면 터치·클릭은 onTap(x, y) (320×200 좌표)로 전달한다.
 
 const KEY_BINDINGS = {
@@ -15,7 +16,7 @@ const KEY_BINDINGS = {
 
 const INTERACT_KEYS = new Set(['KeyE', 'Space']);
 
-export function setupInput({ onInteract, onMenu, onWheel, onTap, onHelp }) {
+export function setupInput({ onInteract, onMenu, onWheel, onTap, onHelp, onBack }) {
   const input = { forward: false, back: false, left: false, right: false, use: false };
 
   window.addEventListener('keydown', (e) => {
@@ -25,6 +26,8 @@ export function setupInput({ onInteract, onMenu, onWheel, onTap, onHelp }) {
       e.preventDefault();
       if (!e.repeat && action === 'forward') onMenu({ move: -1 });
       if (!e.repeat && action === 'back') onMenu({ move: 1 });
+    } else if (e.code === 'Escape') {
+      if (!e.repeat) onBack();
     } else if (e.code === 'KeyH') {
       if (!e.repeat) onHelp();
     } else if (/^Digit[1-9]$/.test(e.code)) {
