@@ -12,3 +12,5 @@ node_modules/
 도면/
 floorplans/
 *.dwg
+
+docs/ROADMAP.md

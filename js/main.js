@@ -25,7 +25,7 @@ const viewCtx = viewCanvas.getContext('2d');
 viewCtx.imageSmoothingEnabled = false;
 
 const renderer = createRenderer(viewCtx);
-const textLayer = createTextLayer(document.getElementById('hud-text'));
+const textLayer = createTextLayer(document.getElementById('hud-text'), viewCanvas);
 
 const state = {
   player: { ...PLAYER_START, walked: 0 },

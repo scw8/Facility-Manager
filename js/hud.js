@@ -28,19 +28,29 @@ const OUTLINE_OFFSETS = [
 
 // ----- 글자 층 -----
 
-function createTextLayer(canvas) {
+function createTextLayer(canvas, viewCanvas) {
   const ctx = canvas.getContext('2d');
   let scale = 1;
 
+  // CSS를 받지 못해도 글자가 게임 화면 위에 겹치도록 배치를 직접 지정한다
+  canvas.parentElement.style.position = 'relative';
+  canvas.style.position = 'absolute';
+  canvas.style.left = '0';
+  canvas.style.top = '0';
+
+  // 크기 기준은 게임 화면이다. 글자 층 자신을 재면 해상도를 바꿀 때마다
+  // 표시 크기도 커지는 상황에서 무한히 커질 수 있다.
   function resize() {
-    const rect = canvas.getBoundingClientRect();
+    const rect = viewCanvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
     canvas.width = Math.max(1, Math.round(rect.width * dpr));
     canvas.height = Math.max(1, Math.round(rect.height * dpr));
     scale = canvas.width / SCREEN_W;
   }
 
-  new ResizeObserver(resize).observe(canvas);
+  new ResizeObserver(resize).observe(viewCanvas);
   resize();
 
   // 폰트 크기를 격자 배수로 맞춰 도트 글꼴이 번지지 않게 한다
