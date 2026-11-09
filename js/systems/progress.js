@@ -1,4 +1,4 @@
-// 경험치·승진·피로도 규칙. 화면과 무관한 순수 게임 규칙만 둔다.
+// 경험치·승진 규칙. 화면과 무관한 순수 게임 규칙만 둔다. (상태치는 stats.js)
 
 export const RANKS = ['시설기사', '주임', '대리', '과장', '시설팀장', '관리소장'];
 
@@ -8,11 +8,8 @@ export const REQUIRED_EXP = [100, 200, 350, 550, 800];
 // 고장 종류별 경험치는 직급과 무관하게 고정. 직급별 필요 경험치만 늘어난다.
 export const FAULT_EXP = { short: 40 };
 
-const FATIGUE_PER_CELL = 0.4; // 한 칸 이동할 때마다 증가
-const FATIGUE_REPAIR_RELIEF = 5; // 수리 성공 시 감소
-
 export function createProgress() {
-  return { rank: 0, exp: 0, fatigue: 0, repairs: 0 };
+  return { rank: 0, exp: 0, repairs: 0 };
 }
 
 export function isTopRank(progress) {
@@ -41,12 +38,7 @@ export function addExp(progress, amount) {
   return promotions;
 }
 
-export function addFatigueFromWalking(progress, cells) {
-  progress.fatigue = Math.min(100, progress.fatigue + cells * FATIGUE_PER_CELL);
-}
-
 export function completeRepair(progress, faultType) {
   progress.repairs += 1;
-  progress.fatigue = Math.max(0, progress.fatigue - FATIGUE_REPAIR_RELIEF);
   return addExp(progress, FAULT_EXP[faultType]);
 }

@@ -1,6 +1,6 @@
 // 맵 데이터를 불러와 타일 조회, 광선 진행, 상호작용 오브젝트 조회를 제공한다.
 
-import { TILE, TILE_CHARS } from './tiles.js';
+import { TILE, TILE_CHARS, TILE_OBJECTS } from './tiles.js';
 
 const DEFAULT_LAMPS = { spacing: 3, offsetX: 1, offsetY: 1 };
 
@@ -31,12 +31,11 @@ export function createMap(data) {
   const height = tiles.length;
   const objects = new Map();
 
-  // 분전반은 타일에서 자동으로 만든다
+  // 분전반·배식대처럼 타일 자체가 오브젝트인 것은 자동으로 만든다
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (tiles[y][x] === TILE.PANEL) {
-        objects.set(cellKey(x, y), { type: 'panel', x, y, state: 'normal', faultType: null });
-      }
+      const make = TILE_OBJECTS[tiles[y][x]];
+      if (make) objects.set(cellKey(x, y), { ...make(), x, y });
     }
   }
 

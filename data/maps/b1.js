@@ -1,7 +1,7 @@
 // 지하 1층 (가상 구조, 실제 도면을 받으면 교체)
 // 좌상단: 기계실 / 우상단: 전기실 / 가운데: 공용복도 / 하단: 창고·계단실
 //
-// 범례: . 바닥  # 콘크리트  % 배관벽  E 분전반  D 문
+// 범례: . 바닥  # 콘크리트  % 배관벽  E 분전반  D 문  C 배식대  R 침상  S 샤워부스
 
 export default {
   id: 'b1',
@@ -29,7 +29,7 @@ export default {
   lamps: { spacing: 3, offsetX: 1, offsetY: 2 },
   // 목적지(to)가 없는 문은 잠긴 문
   doors: [
-    { x: 0, y: 9, to: 'office', spawn: { x: 10.5, y: 4.5, angle: Math.PI } },
+    { x: 0, y: 9, to: 'office', spawn: { x: 12.5, y: 5.5, angle: Math.PI } },
     { x: 21, y: 9, locked: '주차장 쪽 문은 잠겨 있습니다' },
     { x: 19, y: 15, locked: '계단실 문은 잠겨 있습니다' },
   ],

@@ -16,7 +16,8 @@ const DAYS_PER_MONTH = 6;
 const MONTHS_PER_YEAR = 12;
 
 export function createClock() {
-  return { day: 0, minutes: SHIFT_START, skipTarget: null };
+  // skip: 시간 건너뛰기 중이면 { target, label, resting }
+  return { day: 0, minutes: SHIFT_START, skip: null };
 }
 
 // 'HH:MM' → 근무일 기준 분. 08:00 이전 시각은 다음 날(자정 이후)로 본다.
@@ -29,22 +30,34 @@ export function shiftMinute(time) {
 
 // 시계를 dt초만큼 진행한다. 시간 건너뛰기 중이면 빠르게 흐르고, 근무 종료 시각에서 멈춘다.
 export function advanceClock(clock, dt) {
-  const speed = clock.skipTarget !== null ? SKIP_MINUTES_PER_SECOND : MINUTES_PER_SECOND;
-  let next = clock.minutes + dt * speed;
-  if (clock.skipTarget !== null && next >= clock.skipTarget) {
-    next = clock.skipTarget;
-    clock.skipTarget = null;
+  const { skip } = clock;
+  let next = clock.minutes + dt * (skip ? SKIP_MINUTES_PER_SECOND : MINUTES_PER_SECOND);
+  if (skip && next >= skip.target) {
+    next = skip.target;
+    clock.skip = null;
   }
   clock.minutes = Math.min(next, SHIFT_END);
 }
 
-// 'HH:MM'까지 빠르게 감는다 (휴게실 휴식 등에 쓴다)
-export function skipUntil(clock, time) {
+// 'HH:MM'까지 빠르게 감는다. label은 화면에 띄울 문구, resting은 잠을 자는 중인지.
+export function skipUntil(clock, time, label = '휴식 중…', resting = false) {
   const target = shiftMinute(time);
-  if (target > clock.minutes) clock.skipTarget = target;
+  if (target > clock.minutes) clock.skip = { target, label, resting };
 }
 
-export const isSkipping = (clock) => clock.skipTarget !== null;
+// 지금부터 minutes분을 빠르게 감는다 (식사·샤워 등)
+export function skipFor(clock, minutes, label, resting = false) {
+  clock.skip = { target: Math.min(clock.minutes + minutes, SHIFT_END), label, resting };
+}
+
+export function cancelSkip(clock) {
+  clock.skip = null;
+}
+
+export const isSkipping = (clock) => clock.skip !== null;
+
+// 날짜를 넘어 계속 커지는 절대 시각(분). 고장이 얼마나 방치됐는지 잴 때 쓴다.
+export const absoluteMinutes = (clock) => clock.day * DAY_MINUTES + clock.minutes;
 
 // 'HH:MM' ≤ 지금 < 'HH:MM' 인지 (자정을 넘는 구간도 된다)
 export function isBetween(clock, from, to) {

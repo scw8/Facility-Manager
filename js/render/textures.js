@@ -172,6 +172,22 @@ const WEAR = {
     chips: { count: 4, color: [22, 22, 22] },
   },
   lamp: { seed: 701, grime: 0.12 },
+  counter: {
+    seed: 809,
+    grime: 0.12,
+    streaks: { count: 1, color: [70, 70, 66], strength: 0.25 },
+  },
+  bed: {
+    seed: 907,
+    grime: 0.18,
+    patch: { color: [90, 84, 70], amount: 0.3, threshold: 0.66 },
+  },
+  shower: {
+    seed: 1009,
+    grime: 0.16,
+    patch: { color: [150, 140, 96], amount: 0.35, threshold: 0.62 }, // 물때
+    streaks: { count: 2, color: [120, 110, 80], strength: 0.25 },
+  },
 };
 
 // 회색 블록 + 줄눈
@@ -297,6 +313,74 @@ function paintLamp(put, rect, tube) {
   rect(5, 14, 22, 4, tube[0], tube[1], tube[2]);
 }
 
+// 스테인리스 배식대 + 유리 가림막 + 반찬통 + 위쪽 메뉴판
+function paintCounter(put, rect) {
+  const rnd = makeRandom(71);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const v = 96 + rnd() * 6;
+      put(x, y, v + 10, v + 6, v - 4); // 연한 노란 벽
+    }
+  }
+  rect(3, 2, 26, 7, 30, 44, 34); // 메뉴판
+  rect(5, 4, 9, 1, 214, 220, 200);
+  rect(5, 6, 14, 1, 170, 180, 160);
+  rect(0, 14, TEX_SIZE, 2, 150, 176, 180); // 유리 가림막
+  rect(0, 16, TEX_SIZE, 2, 196, 198, 196); // 배식대 상판
+  const trays = [[214, 92, 40], [236, 220, 120], [80, 150, 60], [240, 240, 230]];
+  trays.forEach(([r, g, b], i) => {
+    rect(2 + i * 8, 18, 6, 3, 120, 122, 124);
+    rect(3 + i * 8, 18, 4, 2, r, g, b); // 반찬
+  });
+  for (let y = 21; y < TEX_SIZE; y++) {
+    const v = 150 - (y - 21) * 3;
+    rect(0, y, TEX_SIZE, 1, v, v + 2, v + 6); // 스테인리스 하부장
+  }
+  rect(15, 22, 1, 10, 96, 98, 102);
+}
+
+// 2층 침상: 파란 매트리스, 흰 베개, 회색 담요
+function paintBed(put, rect) {
+  const rnd = makeRandom(83);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const v = 70 + rnd() * 6;
+      put(x, y, v + 6, v + 4, v); // 어두운 벽지
+    }
+  }
+  const bunk = (top) => {
+    rect(1, top, 30, 2, 60, 62, 70); // 철제 프레임
+    rect(2, top - 4, 28, 4, 46, 74, 140); // 매트리스
+    rect(3, top - 6, 7, 3, 222, 222, 214); // 베개
+    rect(12, top - 5, 17, 2, 120, 118, 112); // 담요
+  };
+  bunk(13);
+  bunk(28);
+  rect(1, 0, 2, TEX_SIZE, 60, 62, 70); // 기둥
+  rect(29, 0, 2, TEX_SIZE, 60, 62, 70);
+}
+
+// 흰 타일 벽 + 샤워기 + 반쯤 친 커튼
+function paintShower(put, rect) {
+  const rnd = makeRandom(97);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const joint = x % 8 === 7 || y % 8 === 7;
+      const v = joint ? 150 : 206 + rnd() * 8;
+      put(x, y, v - 6, v, v + 4);
+    }
+  }
+  rect(18, 3, 2, 12, 160, 164, 170); // 샤워 봉
+  rect(15, 3, 8, 3, 190, 194, 200); // 샤워 헤드
+  for (let j = 7; j < 14; j += 2) rect(16 + (j % 3), j, 1, 1, 120, 180, 230); // 물줄기
+  rect(19, 20, 4, 2, 200, 60, 50); // 수전 손잡이
+  for (let y = 1; y < TEX_SIZE; y++) {
+    const fold = Math.floor(y / 2) % 2 === 0 ? 0 : 10;
+    rect(0, y, 9, 1, 70 + fold, 140 + fold, 170 + fold); // 커튼
+  }
+  rect(0, 0, TEX_SIZE, 1, 120, 124, 130); // 커튼 레일
+}
+
 const LAMP_RED_ON = [255, 40, 30];
 const LAMP_OFF = [70, 74, 70];
 const LAMP_GREEN = [60, 255, 110];
@@ -317,6 +401,9 @@ export const TEXTURES = {
   [TILE.CONCRETE]: createVariants(paintConcrete, WEAR.concrete),
   [TILE.PIPES]: createVariants(paintPipes, WEAR.pipes),
   [TILE.DOOR]: [createTexture(paintDoor, WEAR.door)],
+  [TILE.COUNTER]: [createTexture(paintCounter, WEAR.counter)],
+  [TILE.BED]: [createTexture(paintBed, WEAR.bed)],
+  [TILE.SHOWER]: [createTexture(paintShower, WEAR.shower)],
   panelNormal: createTexture((p, r) => paintPanel(p, r, LAMP_OFF, NO_TINT), WEAR.panel),
   panelFaultOn: createTexture((p, r) => paintPanel(p, r, LAMP_RED_ON, [110, -70, -80]), WEAR.panel),
   panelFaultOff: createTexture((p, r) => paintPanel(p, r, [120, 20, 16], [24, -30, -34]), WEAR.panel),

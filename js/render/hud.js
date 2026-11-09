@@ -5,6 +5,8 @@
 import { RANKS, expPercent, isTopRank } from '../systems/progress.js';
 import { transitionAlpha } from '../core/transition.js';
 import { formatTime, formatDate, isBetween, isSkipping } from '../core/clock.js';
+import { LIMITS } from '../systems/stats.js';
+import { workProgress } from '../systems/work.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 import { drawMinimap, minimapRect } from './minimap.js';
 
@@ -20,10 +22,22 @@ export const COLOR = { GOOD: '#8dff9d', ALERT: '#ff8a6a', INFO: '#f2f2e6' };
 // 캐릭터 상태 묶음. 하단 중앙의 아이템칸 자리를 비워 두려고 x=62 안쪽에 맞춘다.
 const FACE_SIZE = 20;
 const FACE_X = HUD_MARGIN;
-const FACE_Y = 169;
-const RANK_Y = 162;
-const FATIGUE_X = FACE_X + FACE_SIZE + 3;
-const EXP_BAR = { x: HUD_MARGIN, y: 192, w: 30, h: 4 };
+const FACE_Y = 167;
+const RANK_Y = 155;
+const GAUGE_LABEL_X = FACE_X + FACE_SIZE + 3;
+const GAUGE_BAR = { x: GAUGE_LABEL_X + 13, w: 20, h: 3 };
+const GAUGE_TOP = 164;
+const GAUGE_STEP = 7;
+const EXP_BAR = { x: HUD_MARGIN, y: 194, w: 30, h: 3 };
+const WORK_BAR = { x: SCREEN_W / 2 - 40, y: 130, w: 80, h: 5 };
+
+// 상태 게이지 4종. danger(값)가 참이면 위험 표시(빨간 글씨)
+const GAUGES = [
+  { key: 'fatigue', label: '피로', color: '#ff9a5c', danger: (v) => v >= LIMITS.tired },
+  { key: 'satiety', label: '포만', color: '#f2c94c', danger: (v) => v <= LIMITS.hungry },
+  { key: 'hygiene', label: '위생', color: '#6fd3ff', danger: (v) => v <= LIMITS.dirty },
+  { key: 'stress', label: '스트', color: '#c78bff', danger: (v) => v >= LIMITS.stressed },
+];
 
 const OUTLINE_OFFSETS = [
   [-1, -1], [0, -1], [1, -1],
@@ -228,6 +242,28 @@ export function drawHudGraphics(ctx, state, map) {
 
   drawFace(ctx, FACE_X, FACE_Y, effects.smileTimer > 0);
 
+  GAUGES.forEach((g, i) => {
+    const y = GAUGE_TOP + i * GAUGE_STEP + 2;
+    const { x, w, h } = GAUGE_BAR;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = g.color;
+    ctx.fillRect(x, y, Math.round((w * state.stats[g.key]) / 100), h);
+  });
+
+  // 작업 게이지
+  if (state.work) {
+    const { x, y, w, h } = WORK_BAR;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = '#3a3420';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#ffe046';
+    ctx.fillRect(x, y, Math.round(w * workProgress(state.work)), h);
+  }
+
   const bar = EXP_BAR;
   ctx.fillStyle = '#000';
   ctx.fillRect(bar.x - 1, bar.y - 1, bar.w + 2, bar.h + 2);
@@ -279,7 +315,7 @@ export function drawHudText(layer, state, map) {
   layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 19, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
 
   if (isSkipping(clock)) {
-    layer.text('휴식 중…', SCREEN_W / 2, SCREEN_H / 2 - 6, { align: 'center' });
+    layer.text(clock.skip.label, SCREEN_W / 2, SCREEN_H / 2 - 6, { align: 'center' });
     return;
   }
   layer.text(`처리 ${progress.repairs}`, mini.x + mini.w, mini.y + mini.h + 2, { align: 'right' });
@@ -295,17 +331,32 @@ export function drawHudText(layer, state, map) {
   if (effects.promotionTimer > 0) {
     layer.text('승진!', SCREEN_W / 2, 58, { align: 'center', color: '#ffe046', size: 16 });
     layer.text(effects.promotionRank, SCREEN_W / 2, 78, { align: 'center', color: '#ffe046' });
+  } else if (state.work) {
+    layer.text(`${state.work.label}…`, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
+    if (state.work.slowed) {
+      layer.text('컨디션이 나빠 작업이 느립니다', SCREEN_W / 2, 138, {
+        align: 'center',
+        color: '#ff9a5c',
+        size: HUD_FONT_SIZE_SMALL,
+      });
+    }
   } else if (prompt && !transition) {
     layer.text(prompt, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
   }
 
   // 좌측 하단 캐릭터 상태 묶음
   const small = HUD_FONT_SIZE_SMALL;
+  const { stats } = state;
   layer.text(RANKS[progress.rank], HUD_MARGIN, RANK_Y, { color: '#ffe046', size: small });
-  layer.text('피로도', FATIGUE_X, FACE_Y + 2, { size: small });
-  layer.text(`${Math.floor(progress.fatigue)}%`, FATIGUE_X, FACE_Y + 10, {
-    color: progress.fatigue >= 70 ? '#ff7a5c' : '#f2f2e6',
+  layer.text(`평판 ${Math.round(stats.reputation)}`, GAUGE_LABEL_X + 10, RANK_Y, {
+    color: stats.reputation <= 20 ? '#ff7a5c' : '#f2f2e6',
     size: small,
+  });
+  GAUGES.forEach((g, i) => {
+    layer.text(g.label, GAUGE_LABEL_X, GAUGE_TOP + i * GAUGE_STEP - 1, {
+      color: g.danger(stats[g.key]) ? '#ff5a4a' : '#d8ddd8',
+      size: 5,
+    });
   });
   const expLabel = isTopRank(progress) ? 'EXP MAX' : `EXP ${expPercent(progress)}%`;
   layer.text(expLabel, EXP_BAR.x + EXP_BAR.w + 3, EXP_BAR.y - 1, { color: '#a8f0a8', size: small });

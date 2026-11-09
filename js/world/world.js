@@ -31,8 +31,14 @@ export function createWorld() {
       return allPanels().filter((p) => p.state === PANEL_STATE.FAULT).length;
     },
 
+    // 고장 난 분전반 목록
+    faults() {
+      return allPanels().filter((p) => p.state === PANEL_STATE.FAULT);
+    },
+
     // 랜덤 분전반에 누전 고장을 낸다. except(방금 고친 분전반)는 후보에서 뺀다.
-    spawnFault(except = null) {
+    // now: 고장이 난 절대 시각(분). 방치 시간을 잴 때 쓴다.
+    spawnFault(except = null, now = 0) {
       const candidates = allPanels().filter(
         (p) => p.state !== PANEL_STATE.FAULT && p !== except
       );
@@ -40,6 +46,8 @@ export function createWorld() {
       const panel = candidates[Math.floor(Math.random() * candidates.length)];
       panel.state = PANEL_STATE.FAULT;
       panel.faultType = 'short';
+      panel.faultSince = now;
+      panel.lastPenalty = now;
       return panel;
     },
   };

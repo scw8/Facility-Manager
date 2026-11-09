@@ -2,8 +2,9 @@
 
 import b1 from './b1.js';
 import office from './office.js';
+import cafeteria from './cafeteria.js';
 
-export const MAP_DATA = [b1, office];
+export const MAP_DATA = [b1, office, cafeteria];
 
 // 근무는 관리사무소에서 시작한다
 export const START_MAP_ID = 'office';
