@@ -5,18 +5,32 @@ import { createWorld } from './world/world.js';
 import { setupInput } from './core/input.js';
 import { beginTransition, updateTransition } from './core/transition.js';
 import { saveGame, loadGame, clearSave } from './core/save.js';
-import { createProgress, addFatigueFromWalking } from './systems/progress.js';
+import {
+  createClock,
+  advanceClock,
+  createSchedule,
+  isSkipping,
+  skipUntil,
+  formatDate,
+  SHIFT_START,
+} from './core/clock.js';
+import {
+  createProgress,
+  addFatigueFromWalking,
+  expPercent,
+  isTopRank,
+  RANKS,
+  FAULT_EXP,
+} from './systems/progress.js';
 import { findTarget, promptFor, interact } from './systems/interactions.js';
 import { createRenderer } from './render/renderer.js';
 import { createTextLayer, drawHudGraphics, drawHudText, HUD_FONT, COLOR } from './render/hud.js';
+import { drawScreenGraphics, drawScreenText } from './render/screens.js';
 
 const MOVE_SPEED = 2.6; // 칸/초
 const TURN_SPEED = 2.2; // 라디안/초
 const PLAYER_RADIUS = 0.25;
 const MAX_FRAME_SECONDS = 0.05; // 탭 전환 등으로 프레임이 튀어도 벽을 뚫지 않게 제한
-
-const CLOCK_START_MINUTES = 2 * 60; // AM 02:00 시작
-const CLOCK_MINUTES_PER_SECOND = 1;
 
 const INITIAL_FAULTS = 2;
 const NEXT_FAULT_DELAY = 3; // 고장을 전부 처리한 뒤 새 고장까지 걸리는 시간(초)
@@ -34,7 +48,9 @@ const state = {
   mapId: START_MAP_ID,
   player: { ...world.getMap(START_MAP_ID).spawn, walked: 0 },
   progress: createProgress(),
-  clockMinutes: CLOCK_START_MINUTES,
+  clock: createClock(),
+  shift: createShiftLog(),
+  screen: null, // 'report'(업무일지) | 'offday'(휴무일) | null. 화면이 떠 있으면 게임이 멈춘다
   time: 0,
   nextFaultTimer: 0,
   lastRepaired: null,
@@ -54,6 +70,11 @@ const state = {
 
 const currentMap = () => world.getMap(state.mapId);
 
+// 이번 근무 동안의 기록. 퇴근할 때 업무일지에 쓴다.
+function createShiftLog() {
+  return { repairs: 0, exp: 0, promotions: [] };
+}
+
 function showMessage(text, color = COLOR.INFO, seconds = 2.5) {
   const { effects } = state;
   effects.message = text;
@@ -70,7 +91,10 @@ const game = {
     const map = world.getMap(mapId);
     beginTransition(state, mapId, spawn || map.spawn, map.name);
   },
-  onRepaired() {
+  onRepaired(faultType, promotions) {
+    state.shift.repairs += 1;
+    state.shift.exp += FAULT_EXP[faultType];
+    state.shift.promotions.push(...promotions);
     if (world.countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_DELAY;
   },
 };
@@ -81,9 +105,88 @@ function switchMap(mapId, spawn) {
   saveGame(state, world);
 }
 
+// ----- 근무 일정 -----
+
+function endShift() {
+  state.screen = 'report';
+  saveGame(state, world);
+}
+
+// 휴무일을 보내고 다음 근무일 아침 사무실에서 시작한다
+function startNextShift() {
+  const office = world.getMap('office');
+  state.clock.day += 1;
+  state.clock.minutes = SHIFT_START;
+  state.clock.skipTarget = null;
+  state.mapId = office.id;
+  Object.assign(state.player, office.spawn);
+  state.progress.fatigue = 0; // 휴무일에 쉬었다 (Phase 3에서 휴무일 활동으로 대체)
+  state.shift = createShiftLog();
+  state.screen = null;
+  showMessage(`${formatDate(state.clock.day)} 출근. 오늘도 안전 근무!`, COLOR.INFO, 3.5);
+  saveGame(state, world);
+}
+
+function advanceScreen() {
+  if (state.screen === 'report') {
+    state.clock.day += 1; // 퇴근 → 휴무일
+    state.screen = 'offday';
+    saveGame(state, world);
+  } else if (state.screen === 'offday') {
+    startNextShift();
+  }
+}
+
+const schedule = createSchedule([
+  { time: '12:00', run: () => showMessage('점심시간입니다 (12:00~13:00)', COLOR.INFO, 3.5) },
+  { time: '13:00', run: () => showMessage('점심시간이 끝났습니다') },
+  { time: '18:00', run: () => showMessage('저녁시간입니다 (18:00~19:00)', COLOR.INFO, 3.5) },
+  { time: '19:00', run: () => showMessage('검침 시간입니다 (검침 기능은 준비 중)', COLOR.ALERT, 3.5) },
+  { time: '07:30', run: () => showMessage('퇴근 30분 전입니다') },
+  { time: '08:00', run: endShift },
+]);
+
+// 업무일지·휴무일 화면에 보여줄 내용
+function screenContent(kind) {
+  const { shift, progress, clock } = state;
+  if (kind === 'report') {
+    const promoted = shift.promotions.length > 0;
+    const exp = isTopRank(progress) ? 'MAX' : `${expPercent(progress)}%`;
+    return {
+      title: '업무일지',
+      subtitle: formatDate(clock.day),
+      lines: [
+        { text: `처리 건수: ${shift.repairs}건` },
+        { text: `획득 경험치: +${shift.exp}` },
+        {
+          text: `승진: ${promoted ? shift.promotions.join(' → ') : '없음'}`,
+          color: promoted ? '#9a6a00' : undefined,
+        },
+        { text: `현재 직급: ${RANKS[progress.rank]} (EXP ${exp})` },
+        { text: `퇴근 시 피로도: ${Math.floor(progress.fatigue)}%` },
+      ],
+      action: '퇴근하기',
+    };
+  }
+  return {
+    title: '휴무일',
+    subtitle: formatDate(clock.day),
+    lines: [
+      { text: '집에서 푹 쉬었다.' },
+      { text: '피로도가 회복되었다.' },
+      { text: '(휴무일 활동 선택은 준비 중)', color: '#6a6658' },
+    ],
+    action: '다음 근무 출근',
+  };
+}
+
 const input = setupInput({
   onInteract() {
-    if (state.transition) return;
+    if (state.screen) {
+      advanceScreen();
+      return;
+    }
+    if (state.transition || isSkipping(state.clock)) return;
     interact(findTarget(currentMap(), state.player), game);
   },
 });
@@ -131,7 +234,11 @@ function update(dt) {
   const { effects } = state;
 
   state.time += dt;
-  state.clockMinutes += dt * CLOCK_MINUTES_PER_SECOND;
+  if (state.screen) return; // 업무일지·휴무일 화면이 떠 있는 동안은 멈춘다
+
+  const prevMinutes = state.clock.minutes;
+  advanceClock(state.clock, dt);
+  schedule.tick(prevMinutes, state.clock.minutes);
 
   effects.messageTimer = Math.max(0, effects.messageTimer - dt);
   effects.okTimer = Math.max(0, effects.okTimer - dt);
@@ -139,7 +246,7 @@ function update(dt) {
   effects.promotionTimer = Math.max(0, effects.promotionTimer - dt);
 
   updateTransition(state, dt, switchMap);
-  if (!state.transition) updatePlayer(dt);
+  if (!state.transition && !isSkipping(state.clock)) updatePlayer(dt);
 
   if (state.nextFaultTimer > 0) {
     state.nextFaultTimer -= dt;
@@ -161,7 +268,13 @@ function draw() {
   const map = currentMap();
   renderer.drawWorld(map, state.player, state.time);
   drawHudGraphics(viewCtx, state, map);
-  drawHudText(textLayer, state, map);
+  if (state.screen) {
+    drawScreenGraphics(viewCtx);
+    textLayer.clear();
+    drawScreenText(textLayer, screenContent(state.screen));
+  } else {
+    drawHudText(textLayer, state, map);
+  }
 }
 
 let lastFrame = performance.now();
@@ -201,10 +314,10 @@ if (loadGame(state, world)) {
   if (world.countFaults() === 0 && state.nextFaultTimer <= 0) {
     state.nextFaultTimer = NEXT_FAULT_DELAY;
   }
-  showMessage('이어서 근무합니다', COLOR.INFO, 3);
+  if (!state.screen) showMessage('이어서 근무합니다', COLOR.INFO, 3);
 } else {
   for (let i = 0; i < INITIAL_FAULTS; i++) world.spawnFault();
-  showMessage('당직 시작. 고장난 분전반을 수리하세요', COLOR.ALERT, 4);
+  showMessage(`${formatDate(state.clock.day)} 출근. 고장난 분전반을 수리하세요`, COLOR.ALERT, 4);
 }
 
 // 개발용: 주소에 ?debug를 붙이면 콘솔에서 상태를 보고 프레임을 직접 돌릴 수 있다
@@ -214,6 +327,8 @@ if (new URLSearchParams(window.location.search).has('debug')) {
     world,
     input,
     interact: () => interact(findTarget(currentMap(), state.player), game),
+    advanceScreen,
+    skipUntil: (time) => skipUntil(state.clock, time),
     step(seconds, dt = 1 / 60) {
       for (let t = 0; t < seconds; t += dt) update(dt);
       draw();

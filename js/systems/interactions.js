@@ -24,7 +24,8 @@ const HANDLERS = {
       }
       const { state } = game;
       const { effects } = state;
-      const promotions = completeRepair(state.progress, panel.faultType);
+      const faultType = panel.faultType;
+      const promotions = completeRepair(state.progress, faultType);
       panel.state = PANEL_STATE.FIXED;
       panel.faultType = null;
       state.lastRepaired = panel;
@@ -39,7 +40,7 @@ const HANDLERS = {
         effects.smileTimer = PROMOTION_SECONDS;
       }
 
-      game.onRepaired();
+      game.onRepaired(faultType, promotions);
     },
   },
 

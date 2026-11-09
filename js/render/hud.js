@@ -4,6 +4,7 @@
 
 import { RANKS, expPercent, isTopRank } from '../systems/progress.js';
 import { transitionAlpha } from '../core/transition.js';
+import { formatTime, formatDate, isBetween, isSkipping } from '../core/clock.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 import { drawMinimap, minimapRect } from './minimap.js';
 
@@ -67,8 +68,8 @@ export function createTextLayer(canvas, viewCanvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     },
 
-    // 배경 없이 화면 위에 직접 쓰는 검은 외곽선 글씨
-    text(str, x, y, { color = '#f2f2e6', size = HUD_FONT_SIZE, align = 'left', alpha = 1 } = {}) {
+    // 배경 없이 화면 위에 직접 쓰는 검은 외곽선 글씨 (outline: false면 외곽선 없이)
+    text(str, x, y, { color = '#f2f2e6', size = HUD_FONT_SIZE, align = 'left', alpha = 1, outline = true } = {}) {
       const px = fontPixels(size);
       const unit = Math.max(1, Math.round(px / 11)); // 외곽선 한 칸의 실제 픽셀 수
       const drawX = Math.round(x * scale);
@@ -78,9 +79,11 @@ export function createTextLayer(canvas, viewCanvas) {
       ctx.font = `${px}px "${HUD_FONT}", ui-monospace, Menlo, monospace`;
       ctx.textAlign = align;
       ctx.textBaseline = 'top';
-      ctx.fillStyle = '#000';
-      for (const [ox, oy] of OUTLINE_OFFSETS) {
-        ctx.fillText(str, drawX + ox * unit, drawY + oy * unit);
+      if (outline) {
+        ctx.fillStyle = '#000';
+        for (const [ox, oy] of OUTLINE_OFFSETS) {
+          ctx.fillText(str, drawX + ox * unit, drawY + oy * unit);
+        }
       }
       ctx.fillStyle = color;
       ctx.fillText(str, drawX, drawY);
@@ -211,11 +214,11 @@ function drawMultimeter(ctx, bob, showOk, lift) {
 
 // ----- 전체 HUD -----
 
-function formatClock(minutes) {
-  const total = Math.floor(minutes) % 720;
-  const h = String(Math.floor(total / 60)).padStart(2, '0');
-  const m = String(total % 60).padStart(2, '0');
-  return `AM ${h}:${m}`;
+// 지금이 식사 시간이면 시계 옆에 표시할 이름
+function mealLabel(clock) {
+  if (isBetween(clock, '12:00', '13:00')) return '점심시간';
+  if (isBetween(clock, '18:00', '19:00')) return '저녁시간';
+  return null;
 }
 
 export function drawHudGraphics(ctx, state, map) {
@@ -242,6 +245,12 @@ export function drawHudGraphics(ctx, state, map) {
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
   }
 
+  // 시간 건너뛰기(휴식) 중에는 화면을 어둡게
+  if (isSkipping(state.clock)) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+  }
+
   // 맵 전환 중 검은 덮개
   const fade = transitionAlpha(state.transition);
   if (fade > 0) {
@@ -251,7 +260,7 @@ export function drawHudGraphics(ctx, state, map) {
 }
 
 export function drawHudText(layer, state, map) {
-  const { progress, effects, clockMinutes, prompt, transition } = state;
+  const { progress, effects, clock, prompt, transition } = state;
 
   layer.clear();
 
@@ -263,8 +272,16 @@ export function drawHudText(layer, state, map) {
   }
 
   const mini = minimapRect(map);
-  layer.text(formatClock(clockMinutes), HUD_MARGIN, HUD_MARGIN);
-  layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 10, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
+  layer.text(formatTime(clock.minutes), HUD_MARGIN, HUD_MARGIN);
+  const meal = mealLabel(clock);
+  if (meal) layer.text(meal, HUD_MARGIN + 48, HUD_MARGIN, { color: '#ffd27a' });
+  layer.text(formatDate(clock.day), HUD_MARGIN, HUD_MARGIN + 11, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
+  layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 19, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
+
+  if (isSkipping(clock)) {
+    layer.text('휴식 중…', SCREEN_W / 2, SCREEN_H / 2 - 6, { align: 'center' });
+    return;
+  }
   layer.text(`처리 ${progress.repairs}`, mini.x + mini.w, mini.y + mini.h + 2, { align: 'right' });
 
   if (effects.messageTimer > 0) {

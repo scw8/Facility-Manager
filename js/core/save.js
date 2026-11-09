@@ -2,7 +2,7 @@
 // 나중에 서버 저장으로 바꿀 때는 이 파일의 readRaw/writeRaw만 바꾸면 된다.
 
 const SAVE_KEY = 'facility-manager/save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2; // 저장 형식이 바뀌면 올린다. 옛 형식은 버리고 새로 시작한다.
 
 // 저장 공간이 막힌 환경(사생활 보호 모드 등)에서도 게임은 계속 돌아가야 한다
 function readRaw() {
@@ -43,7 +43,9 @@ function snapshot(state, world) {
     mapId: state.mapId,
     player: { x, y, angle, walked: state.player.walked },
     progress: state.progress,
-    clockMinutes: state.clockMinutes,
+    clock: { day: state.clock.day, minutes: state.clock.minutes },
+    shift: state.shift,
+    screen: state.screen,
     nextFaultTimer: state.nextFaultTimer,
     panels,
   };
@@ -69,7 +71,9 @@ export function loadGame(state, world) {
   state.mapId = data.mapId;
   Object.assign(state.player, data.player);
   Object.assign(state.progress, data.progress);
-  state.clockMinutes = data.clockMinutes;
+  Object.assign(state.clock, data.clock);
+  Object.assign(state.shift, data.shift);
+  state.screen = data.screen ?? null;
   state.nextFaultTimer = data.nextFaultTimer;
 
   for (const [fullKey, [panelState, faultType]] of Object.entries(data.panels || {})) {
