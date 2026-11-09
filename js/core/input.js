@@ -26,7 +26,7 @@ export function setupInput({ onInteract, onMenu, onWheel, onTap, onHelp, onBack 
       e.preventDefault();
       if (!e.repeat && action === 'forward') onMenu({ move: -1 });
       if (!e.repeat && action === 'back') onMenu({ move: 1 });
-    } else if (e.code === 'Escape') {
+    } else if (e.code === 'Escape' || e.key === 'Escape' || e.key === 'Esc') {
       if (!e.repeat) onBack();
     } else if (e.code === 'KeyH') {
       if (!e.repeat) onHelp();
