@@ -27,7 +27,7 @@ const FACE_X = HUD_MARGIN;
 const FACE_Y = 167;
 const RANK_Y = 155;
 const GAUGE_LABEL_X = FACE_X + FACE_SIZE + 3;
-const GAUGE_BAR = { x: GAUGE_LABEL_X + 13, w: 20, h: 3 };
+const GAUGE_BAR = { x: GAUGE_LABEL_X + 22, w: 22, h: 3 };
 const GAUGE_TOP = 164;
 const GAUGE_STEP = 7;
 const EXP_BAR = { x: HUD_MARGIN, y: 194, w: 30, h: 3 };
@@ -35,10 +35,10 @@ const WORK_BAR = { x: SCREEN_W / 2 - 40, y: 130, w: 80, h: 5 };
 
 // 상태 게이지 4종. danger(값)가 참이면 위험 표시(빨간 글씨)
 const GAUGES = [
-  { key: 'fatigue', label: '피로', color: '#ff9a5c', danger: (v) => v >= LIMITS.tired },
-  { key: 'satiety', label: '포만', color: '#f2c94c', danger: (v) => v <= LIMITS.hungry },
+  { key: 'fatigue', label: '피로도', color: '#ff9a5c', danger: (v) => v >= LIMITS.tired },
+  { key: 'satiety', label: '포만감', color: '#f2c94c', danger: (v) => v <= LIMITS.hungry },
   { key: 'hygiene', label: '위생', color: '#6fd3ff', danger: (v) => v <= LIMITS.dirty },
-  { key: 'stress', label: '스트', color: '#c78bff', danger: (v) => v >= LIMITS.stressed },
+  { key: 'stress', label: '스트레스', color: '#c78bff', danger: (v) => v >= LIMITS.stressed },
 ];
 
 const OUTLINE_OFFSETS = [
@@ -358,10 +358,8 @@ export function drawHudText(layer, state, map) {
   if (meal) layer.text(meal, HUD_MARGIN + 48, HUD_MARGIN, { color: '#ffd27a' });
   layer.text(formatDate(clock.day), HUD_MARGIN, HUD_MARGIN + 11, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
   layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 19, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
-  if (state.phase === 'home') {
-    const morning = state.morning;
-    const todo = [!morning.washed && '씻기', !morning.ate && '아침'].filter(Boolean);
-    layer.text(`출근 08:00까지${todo.length ? ` · 남은 일: ${todo.join(', ')}` : ''}`, HUD_MARGIN, HUD_MARGIN + 27, {
+  if (state.objective) {
+    layer.text(`할 일: ${state.objective}`, HUD_MARGIN, HUD_MARGIN + 28, {
       size: HUD_FONT_SIZE_SMALL,
       color: '#ffd27a',
     });

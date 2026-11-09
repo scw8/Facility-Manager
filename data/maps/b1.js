@@ -40,7 +40,7 @@ export default {
   // 목적지(to)가 없는 문은 잠긴 문
   doors: [
     { x: 0, y: 9, to: 'office', spawn: { x: 12.5, y: 5.5, angle: Math.PI } },
-    { x: 21, y: 9, locked: '주차장 쪽 문은 잠겨 있습니다' },
-    { x: 19, y: 15, locked: '계단실 문은 잠겨 있습니다' },
+    { x: 21, y: 9, label: '주차장 쪽 문', locked: '주차장 쪽 문은 잠겨 있습니다' },
+    { x: 19, y: 15, label: '계단실 문', locked: '계단실 문은 잠겨 있습니다' },
   ],
 };

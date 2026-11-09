@@ -9,7 +9,7 @@ export const DAY_MINUTES = 24 * 60;
 export const SHIFT_START = 8 * 60;
 export const SHIFT_END = SHIFT_START + DAY_MINUTES;
 
-export const MINUTES_PER_SECOND = 1.6; // 게임 24시간 ≈ 현실 15분 [초기값]
+export const MINUTES_PER_SECOND = 1; // 게임 24시간 = 현실 24분 (야간 휴식으로 건너뛰면 더 짧다) [초기값]
 const SKIP_MINUTES_PER_SECOND = 120; // 시간 건너뛰기 중 속도
 
 const DAYS_PER_MONTH = 6;

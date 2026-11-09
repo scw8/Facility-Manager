@@ -15,7 +15,7 @@ const KEY_BINDINGS = {
 
 const INTERACT_KEYS = new Set(['KeyE', 'Space']);
 
-export function setupInput({ onInteract, onMenu, onWheel, onTap }) {
+export function setupInput({ onInteract, onMenu, onWheel, onTap, onHelp }) {
   const input = { forward: false, back: false, left: false, right: false, use: false };
 
   window.addEventListener('keydown', (e) => {
@@ -25,6 +25,8 @@ export function setupInput({ onInteract, onMenu, onWheel, onTap }) {
       e.preventDefault();
       if (!e.repeat && action === 'forward') onMenu({ move: -1 });
       if (!e.repeat && action === 'back') onMenu({ move: 1 });
+    } else if (e.code === 'KeyH') {
+      if (!e.repeat) onHelp();
     } else if (/^Digit[1-9]$/.test(e.code)) {
       onMenu({ pick: Number(e.code.slice(5)) - 1 });
     } else if (INTERACT_KEYS.has(e.code)) {

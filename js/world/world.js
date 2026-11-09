@@ -8,6 +8,13 @@ export const PANEL_STATE = { NORMAL: 'normal', FAULT: 'fault', FIXED: 'fixed' };
 export function createWorld() {
   const maps = new Map(MAP_DATA.map((data) => [data.id, createMap(data)]));
 
+  // 문에 목적지 이름을 달아 둔다 ("지하 1층으로 이동" 안내용)
+  for (const map of maps.values()) {
+    for (const obj of map.objects.values()) {
+      if (obj.type === 'door' && obj.to) obj.toName = maps.get(obj.to).name;
+    }
+  }
+
   function allPanels() {
     const panels = [];
     for (const map of maps.values()) {

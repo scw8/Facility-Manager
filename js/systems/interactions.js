@@ -20,6 +20,7 @@ import {
 import { INSPECTION_START, PIPE_REPLACE_SECONDS } from './inspection.js';
 import { checkTask, consumeTask } from './inventory.js';
 import { STORAGES } from '../../data/items.js';
+import { withDirection } from '../core/korean.js';
 
 // 작업에 필요한 아이템이 없으면 안내하고 false
 function ready(game, taskId) {
@@ -142,8 +143,9 @@ const HANDLERS = {
 
   door: {
     prompt(door) {
-      if (door.commute) return `${KEY_HINT}출근하기 (${COMMUTE_MINUTES}분)`;
-      return door.to ? `${KEY_HINT}문 열기` : null;
+      if (door.commute) return `${KEY_HINT}출근하기 → 사무실 (${COMMUTE_MINUTES}분)`;
+      if (door.to) return `${KEY_HINT}${withDirection(door.toName)} 이동`;
+      return `${door.label || '문'} · 잠김`;
     },
 
     interact(door, game) {

@@ -18,6 +18,6 @@ export default {
   spawn: { x: 2.5, y: 1.5, angle: Math.PI / 2 }, // 침대 옆에서 일어난다
   lamps: { spacing: 3, offsetX: 1, offsetY: 0 },
   theme: { wall: 'wallpaper', floor: 'wood' },
-  // commute: 출근 문. 지나가면 30분 뒤 관리사무소에 도착한다
+  // commute: 출근 문. 지나가면 30분 뒤 사무실에 도착한다
   doors: [{ x: 9, y: 4, commute: true }],
 };

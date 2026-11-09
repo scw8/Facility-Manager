@@ -2,6 +2,7 @@
 
 import { ITEMS, TASKS } from '../../data/items.js';
 import { owns } from './economy.js';
+import { withObject } from '../core/korean.js';
 
 const BASE_SLOTS = 6;
 const BIG_BAG_BONUS = 2;
@@ -15,13 +16,6 @@ export function capacity(state) {
 }
 
 export const itemName = (id) => ITEMS[id].name;
-
-// 받침 유무에 따라 '을/를'을 붙인다
-function withObject(word) {
-  const code = word.charCodeAt(word.length - 1) - 0xac00;
-  const hasFinal = code >= 0 && code <= 11171 && code % 28 !== 0;
-  return `${word}${hasFinal ? '을' : '를'}`;
-}
 
 export const hasItem = (state, id) => state.bag.items.includes(id);
 export const heldItem = (state) => state.bag.items[state.bag.selected] ?? null;

@@ -57,6 +57,7 @@ import { findTarget, promptFor, interact } from './systems/interactions.js';
 import { createBag, capacity, selectSlot, cycleSlot, toggleItem, hasItem } from './systems/inventory.js';
 import { SALARY, START_MONEY, SHOP_ITEMS, owns, buy, formatWon, isPayday } from './systems/economy.js';
 import { ITEMS, STORAGES } from '../data/items.js';
+import { INTRO_PAGES, TIPS, currentObjective } from './systems/guide.js';
 import { createRenderer } from './render/renderer.js';
 import {
   createTextLayer,
@@ -109,9 +110,15 @@ const state = {
   screenNote: '', // 공구실·상점 화면에 띄울 짧은 결과 문구
   shift: null, // createShiftLog()로 채운다
   // 게임을 멈추고 띄우는 화면:
-  // 'wake' 기상 시각 | 'inspect' 검침 | 'storage' 공구실 | 'shop' 상점
+  // 'intro' 시작 설명·도움말 | 'tip' 처음 안내 | 'wake' 기상 시각 | 'inspect' 검침 | 'storage' 공구실 | 'shop' 상점
   // 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
-  screen: 'wake',
+  screen: 'intro',
+  screenReturn: 'wake', // 설명·안내 화면을 닫으면 돌아갈 화면 (null이면 게임으로)
+  introPage: 0,
+  tip: null, // 지금 보여주는 안내 id
+  tipsSeen: [], // 이미 본 안내
+  tipQueue: [], // 게임 중 띄울 차례를 기다리는 안내
+  objective: '', // 화면 왼쪽 위 "할 일"
   menuIndex: 0, // 선택지 화면에서 고른 줄
   work: null, // 진행 중인 작업 게이지
   time: 0,
@@ -282,10 +289,11 @@ function wakeAtHome(option) {
   state.morning = createMorning();
   state.screen = null;
   showMessage('씻고, 먹고, 08:00까지 출근!', COLOR.INFO, 4);
+  queueTip('home');
   saveGame(state, world);
 }
 
-// 현관문을 나서면 30분 뒤 관리사무소에 도착한다. 08:00을 넘기면 지각.
+// 현관문을 나서면 30분 뒤 사무실에 도착한다. 08:00을 넘기면 지각.
 function commute() {
   if (state.transition || state.phase !== 'home') return;
   const office = world.getMap('office');
@@ -321,6 +329,7 @@ function commute() {
   applyInspectionToWorld(state.inspection, world);
 
   beginTransition(state, office.id, office.spawn, '출근 중…');
+  queueTip('office');
 }
 
 function restartGame() {
@@ -332,6 +341,35 @@ function restartGame() {
 function openScreen(kind) {
   state.screen = kind;
   state.menuIndex = 0;
+}
+
+// ----- 안내 -----
+
+// 게임 중 처음 겪는 상황: 화면이 비면 띄운다
+function queueTip(id) {
+  if (!state.tipsSeen.includes(id) && !state.tipQueue.includes(id)) state.tipQueue.push(id);
+}
+
+// 지금 떠 있는 화면 위에 바로 띄운다 (닫으면 원래 화면으로)
+function showTip(id) {
+  if (state.tipsSeen.includes(id)) return;
+  state.tipsSeen.push(id);
+  state.screenReturn = state.screen;
+  state.tip = id;
+  state.screen = 'tip';
+}
+
+function openHelp() {
+  if (state.screen === 'intro' || state.screen === 'tip') return;
+  state.screenReturn = state.screen;
+  state.introPage = 0;
+  state.screen = 'intro';
+}
+
+function closeGuide() {
+  state.screen = state.screenReturn;
+  state.screenReturn = null;
+  state.tip = null;
 }
 
 // 지금 화면의 선택지 (없으면 null)
@@ -358,6 +396,16 @@ function screenOptions() {
 function advanceScreen() {
   const options = screenOptions();
   switch (state.screen) {
+    case 'intro':
+      if (state.introPage < INTRO_PAGES.length - 1) {
+        state.introPage += 1;
+        return;
+      }
+      closeGuide();
+      break;
+    case 'tip':
+      closeGuide();
+      break;
     case 'wake':
       wakeAtHome(options[state.menuIndex]);
       return;
@@ -372,6 +420,7 @@ function advanceScreen() {
       beginOffDay(state.stats);
       state.offday = { slots: [] };
       openScreen('offday');
+      showTip('offday');
       break;
     case 'storage': {
       const id = options[state.menuIndex];
@@ -460,7 +509,10 @@ const schedule = createSchedule([
   { time: '18:00', run: () => showMessage('저녁시간입니다. 구내식당으로!', COLOR.INFO, 3.5) },
   {
     time: '19:00',
-    run: () => showMessage('검침 시간! 지하 1층 기계실·전기실·비트를 점검하세요', COLOR.ALERT, 4),
+    run: () => {
+      showMessage('검침 시간! 지하 1층 기계실·전기실·비트를 점검하세요', COLOR.ALERT, 4);
+      queueTip('inspection');
+    },
   },
   {
     time: INSPECTION_DEADLINE,
@@ -544,7 +596,7 @@ function screenContent(kind) {
       title: '해고',
       subtitle,
       lines: [
-        { text: '평판이 바닥나 관리사무소에서 해고되었다.' },
+        { text: '평판이 바닥나 해고되었다.' },
         { text: `최종 직급: ${RANKS[progress.rank]}` },
         { text: `총 처리 건수: ${progress.repairs}건` },
       ],
@@ -556,6 +608,27 @@ function screenContent(kind) {
     text: `피로 ${Math.round(stats.fatigue)} · 포만 ${Math.round(stats.satiety)} · 위생 ${Math.round(stats.hygiene)} · 스트레스 ${Math.round(stats.stress)}`,
     color: '#5a5648',
   };
+
+  if (kind === 'intro') {
+    const page = INTRO_PAGES[state.introPage];
+    const last = state.introPage === INTRO_PAGES.length - 1;
+    return {
+      title: page.title,
+      subtitle: `도움말 ${state.introPage + 1}/${INTRO_PAGES.length}`,
+      lines: page.lines.map((text) => ({ text, size: 7 })),
+      action: last ? (state.screenReturn === 'wake' ? '시작하기' : '닫기') : '다음',
+    };
+  }
+
+  if (kind === 'tip') {
+    const tip = TIPS[state.tip];
+    return {
+      title: tip.title,
+      subtitle: '처음 안내 · H키로 도움말을 다시 볼 수 있다',
+      lines: tip.lines.map((text) => ({ text, size: 7 })),
+      action: '확인',
+    };
+  }
 
   if (kind === 'storage') {
     const storage = STORAGES[state.storage];
@@ -650,6 +723,7 @@ const input = setupInput({
     if (state.screen) moveMenu(e);
     else if (e.pick !== undefined) selectSlot(state, e.pick);
   },
+  onHelp: openHelp,
   onWheel(delta) {
     if (!state.screen) cycleSlot(state, delta);
   },
@@ -791,6 +865,13 @@ function update(dt) {
   }
 
   state.prompt = promptFor(target, state);
+  state.objective = currentObjective(state, world);
+
+  // 기다리던 안내가 있으면 화면이 조용할 때 띄운다
+  if (state.tipQueue.length > 0 && !state.transition && !state.work && !isSkipping(clock)) {
+    showTip(state.tipQueue.shift());
+    return;
+  }
 
   state.autosaveTimer -= dt;
   if (state.autosaveTimer <= 0) {
