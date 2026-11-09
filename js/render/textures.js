@@ -541,6 +541,52 @@ function paintPit(put, rect, leak) {
   }
 }
 
+// 벽걸이 공구판: 타공판에 걸린 스패너·렌치·손전등·사다리
+function paintToolWall(put, rect) {
+  rect(0, 0, TEX_SIZE, TEX_SIZE, 150, 120, 80);
+  rect(1, 1, 30, 30, 186, 150, 100); // 타공판
+  for (let y = 3; y < 30; y += 4) for (let x = 3; x < 30; x += 4) put(x, y, 110, 86, 56);
+  rect(4, 4, 2, 12, 170, 172, 178); // 몽키스패너
+  rect(3, 4, 4, 3, 170, 172, 178);
+  rect(10, 4, 3, 14, 200, 40, 40); // 파이프렌치 손잡이
+  rect(9, 4, 5, 3, 120, 122, 128);
+  rect(17, 5, 4, 9, 230, 200, 40); // 손전등
+  rect(17, 5, 4, 2, 250, 250, 210);
+  rect(24, 4, 1, 24, 200, 200, 210); // 사다리
+  rect(28, 4, 1, 24, 200, 200, 210);
+  for (let y = 7; y < 28; y += 5) rect(24, y, 5, 1, 200, 200, 210);
+  rect(5, 20, 12, 2, 230, 180, 40); // 드라이버
+  rect(5, 20, 4, 2, 40, 90, 200);
+}
+
+// 빨간 공구함: 서랍 3단
+function paintToolbox(put, rect) {
+  paintDeviceWall(put);
+  rect(3, 6, 26, 25, 190, 36, 30);
+  rect(3, 6, 26, 1, 230, 80, 70);
+  for (const y of [9, 16, 23]) {
+    rect(5, y, 22, 6, 160, 28, 24);
+    rect(13, y + 2, 6, 1, 200, 200, 206); // 손잡이
+  }
+  rect(3, 31, 26, 1, 40, 40, 40);
+}
+
+// 자재 선반: 철제 선반 위 상자와 부품
+function paintShelf(put, rect) {
+  paintDeviceWall(put);
+  rect(2, 2, 1, 30, 140, 144, 150);
+  rect(29, 2, 1, 30, 140, 144, 150);
+  for (const y of [9, 19, 29]) rect(2, y, 28, 2, 160, 164, 170);
+  rect(4, 3, 8, 6, 180, 140, 90); // 상자
+  rect(14, 5, 6, 4, 230, 230, 236); // 감지기
+  rect(16, 6, 2, 2, 200, 60, 50);
+  rect(22, 4, 6, 5, 200, 160, 40); // 감압밸브
+  rect(4, 15, 24, 2, 236, 236, 230); // 형광등
+  rect(4, 13, 10, 2, 120, 124, 130); // 배관
+  rect(4, 23, 7, 6, 90, 120, 160); // 구동기
+  rect(14, 22, 12, 7, 180, 140, 90);
+}
+
 const LAMP_RED_ON = [255, 40, 30];
 const LAMP_OFF = [70, 74, 70];
 const LAMP_GREEN = [60, 255, 110];
@@ -570,6 +616,9 @@ export const TEXTURES = {
   [TILE.GENERATOR]: [createTexture(paintGenerator, WEAR.device)],
   [TILE.PIT]: [createTexture((p, r) => paintPit(p, r, false), WEAR.device)],
   pitLeak: createTexture((p, r) => paintPit(p, r, true), WEAR.device),
+  [TILE.TOOLWALL]: [createTexture(paintToolWall, WEAR.device)],
+  [TILE.TOOLBOX]: [createTexture(paintToolbox, WEAR.device)],
+  [TILE.SHELF]: [createTexture(paintShelf, WEAR.device)],
   panelNormal: createTexture((p, r) => paintPanel(p, r, LAMP_OFF, NO_TINT), WEAR.panel),
   panelFaultOn: createTexture((p, r) => paintPanel(p, r, LAMP_RED_ON, [110, -70, -80]), WEAR.panel),
   panelFaultOff: createTexture((p, r) => paintPanel(p, r, [120, 20, 16], [24, -30, -34]), WEAR.panel),

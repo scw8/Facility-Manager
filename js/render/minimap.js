@@ -22,6 +22,9 @@ const TILE_COLORS = {
   [TILE.HEATMETER]: '#f0d020',
   [TILE.GENERATOR]: '#4a8a4a',
   [TILE.PIT]: '#4a6aa8',
+  [TILE.TOOLWALL]: '#d07030',
+  [TILE.TOOLBOX]: '#d03030',
+  [TILE.SHELF]: '#a0a0b0',
 };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

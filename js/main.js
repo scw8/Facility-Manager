@@ -54,8 +54,18 @@ import {
   MORNING_EFFECTS,
 } from './systems/life.js';
 import { findTarget, promptFor, interact } from './systems/interactions.js';
+import { createBag, capacity, selectSlot, cycleSlot, toggleItem, hasItem } from './systems/inventory.js';
+import { SALARY, START_MONEY, SHOP_ITEMS, owns, buy, formatWon, isPayday } from './systems/economy.js';
+import { ITEMS, STORAGES } from '../data/items.js';
 import { createRenderer } from './render/renderer.js';
-import { createTextLayer, drawHudGraphics, drawHudText, HUD_FONT, COLOR } from './render/hud.js';
+import {
+  createTextLayer,
+  drawHudGraphics,
+  drawHudText,
+  slotRects,
+  HUD_FONT,
+  COLOR,
+} from './render/hud.js';
 import { drawScreenGraphics, drawScreenText } from './render/screens.js';
 
 const MOVE_SPEED = 2.6; // 칸/초
@@ -70,6 +80,7 @@ const NEXT_FAULT_MINUTES_NIGHT = 120; // 22:00~06:00
 const FAST_REPAIR_MINUTES = 60; // 이 안에 고치면 평판 가산
 const NEGLECT_MINUTES = 120; // 고장을 이만큼 방치할 때마다 평판 감점
 const AUTOSAVE_SECONDS = 5;
+const DRILL_BONUS = 1.3;
 
 const viewCanvas = document.getElementById('view');
 const viewCtx = viewCanvas.getContext('2d');
@@ -91,9 +102,15 @@ const state = {
   offday: { slots: [] }, // 휴무일에 고른 활동 id들
   inspection: null, // 오늘의 검침 데이터 (근무 시작 때 만든다)
   inspecting: null, // 검침 화면에서 보고 있는 지점 key
+  bag: createBag(), // 아이템 슬롯
+  money: START_MONEY,
+  owned: [], // 상점에서 산 장비 id
+  storage: null, // 열어 둔 공구실 보관함 id
+  screenNote: '', // 공구실·상점 화면에 띄울 짧은 결과 문구
   shift: null, // createShiftLog()로 채운다
   // 게임을 멈추고 띄우는 화면:
-  // 'wake' 기상 시각 | 'inspect' 검침 | 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
+  // 'wake' 기상 시각 | 'inspect' 검침 | 'storage' 공구실 | 'shop' 상점
+  // 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
   screen: 'wake',
   menuIndex: 0, // 선택지 화면에서 고른 줄
   work: null, // 진행 중인 작업 게이지
@@ -127,6 +144,7 @@ function createShiftLog() {
     notes: [], // 업무일지에 덧붙일 특이사항
     ending: null, // 쓰러졌다면 'fatigue' | 'hunger' | 'burnout'
     inspection: null, // 퇴근 때 매긴 검침 결과
+    pay: 0, // 이번 근무에 받은 월급 (월급날만)
   };
 }
 state.shift = createShiftLog();
@@ -154,7 +172,12 @@ const game = {
     beginTransition(state, mapId, spawn || map.spawn, map.name);
   },
   startWork(job) {
-    startWork(state, job);
+    startWork(state, job, owns(state, 'drill') ? DRILL_BONUS : 1);
+  },
+  openStorage(id) {
+    state.storage = id;
+    state.screenNote = '';
+    openScreen('storage');
   },
   commute: () => commute(),
   openInspection(key) {
@@ -210,9 +233,18 @@ function finishInspection(countUnfinished) {
   if (result.notDone) shift.notes.push(`검침 미완료 (평판 ${SCORE.notDone.reputation})`);
 }
 
+// 그 달의 마지막 근무면 월급을 받는다
+function payday() {
+  const { shift } = state;
+  if (shift.pay || !isPayday(state.clock.day)) return;
+  shift.pay = SALARY[state.progress.rank];
+  state.money += shift.pay;
+}
+
 function endShift() {
   stopActivities();
   finishInspection(true);
+  payday();
   const { stats, shift } = state;
   if (stats.hygiene <= LIMITS.dirty) {
     applyEffect(stats, EFFECTS.dirtyAtShiftEnd);
@@ -225,6 +257,7 @@ function endShift() {
 function collapse(reason) {
   stopActivities();
   finishInspection(state.clock.minutes >= shiftMinute(INSPECTION_DEADLINE));
+  payday();
   state.shift.ending = reason;
   applyEffect(state.stats, reason === 'burnout' ? EFFECTS.burnout : EFFECTS.collapse);
   state.screen = 'collapse';
@@ -302,6 +335,9 @@ function openScreen(kind) {
 }
 
 // 지금 화면의 선택지 (없으면 null)
+const CLOSE = 'close';
+const SHOP_OPTION = { id: 'shop', label: '인터넷 쇼핑', desc: '시간을 쓰지 않음' };
+
 const INSPECT_OPTIONS = [
   { label: '정상', desc: '이상 없음' },
   { label: '이상', desc: '이상 보고' },
@@ -311,8 +347,10 @@ function screenOptions() {
   if (state.screen === 'wake') return WAKE_OPTIONS;
   if (state.screen === 'inspect') return INSPECT_OPTIONS;
   if (state.screen === 'offday' && state.offday.slots.length < OFFDAY_SLOTS.length) {
-    return OFFDAY_ACTIVITIES;
+    return [...OFFDAY_ACTIVITIES, SHOP_OPTION];
   }
+  if (state.screen === 'storage') return [...STORAGES[state.storage].items, CLOSE];
+  if (state.screen === 'shop') return [...SHOP_ITEMS, CLOSE];
   return null;
 }
 
@@ -335,10 +373,38 @@ function advanceScreen() {
       state.offday = { slots: [] };
       openScreen('offday');
       break;
+    case 'storage': {
+      const id = options[state.menuIndex];
+      if (id === CLOSE) {
+        state.screen = null;
+        return;
+      }
+      state.screenNote = toggleItem(state, id);
+      return;
+    }
+    case 'shop': {
+      const item = options[state.menuIndex];
+      if (item === CLOSE) {
+        openScreen('offday');
+        break;
+      }
+      state.screenNote = buy(state, item.id) ?? `${item.name} 구매 완료`;
+      break;
+    }
     case 'offday':
       if (options) {
         const activity = options[state.menuIndex];
-        doActivity(activity.id, state.stats, state.life);
+        if (activity.id === 'shop') {
+          state.screenNote = '';
+          openScreen('shop');
+          return;
+        }
+        const problem = doActivity(activity.id, state);
+        if (problem) {
+          state.screenNote = problem;
+          return;
+        }
+        state.screenNote = '';
         state.offday.slots.push(activity.id);
       } else {
         state.clock.day += 1; // 잠자리에 든다 → 다음 근무일 아침
@@ -444,6 +510,12 @@ function screenContent(kind) {
       {
         text: `피로 ${Math.round(stats.fatigue)} · 포만 ${Math.round(stats.satiety)} · 위생 ${Math.round(stats.hygiene)} · 스트레스 ${Math.round(stats.stress)}`,
       },
+      {
+        text: shift.pay
+          ? `월급날! +${formatWon(shift.pay)} · 잔고 ${formatWon(state.money)}`
+          : `잔고 ${formatWon(state.money)} (월급은 매달 3번째 근무 후)`,
+        color: shift.pay ? '#2a7a2a' : '#5a5648',
+      },
     ];
     if (shift.neglected > 0) {
       lines.push({ text: `고장 방치 ${shift.neglected}회 (평판 감점)`, color: '#a83020' });
@@ -485,6 +557,39 @@ function screenContent(kind) {
     color: '#5a5648',
   };
 
+  if (kind === 'storage') {
+    const storage = STORAGES[state.storage];
+    return {
+      title: storage.name,
+      subtitle: `아이템 슬롯 ${state.bag.items.length}/${capacity(state)}${state.screenNote ? ` · ${state.screenNote}` : ''}`,
+      lines: [],
+      options: [
+        ...storage.items.map((id) => ({
+          label: ITEMS[id].name,
+          desc: hasItem(state, id) ? '챙김 ✓ (다시 누르면 돌려놓기)' : ITEMS[id].kind === 'part' ? '부품' : '',
+        })),
+        { label: '닫기' },
+      ],
+      selected: state.menuIndex,
+    };
+  }
+
+  if (kind === 'shop') {
+    return {
+      title: '인터넷 쇼핑',
+      subtitle: `잔고 ${formatWon(state.money)}${state.screenNote ? ` · ${state.screenNote}` : ''}`,
+      lines: [],
+      options: [
+        ...SHOP_ITEMS.map((item) => ({
+          label: `${item.name} ${formatWon(item.price)}`,
+          desc: owns(state, item.id) ? '보유 ✓' : item.desc,
+        })),
+        { label: '돌아가기' },
+      ],
+      selected: state.menuIndex,
+    };
+  }
+
   if (kind === 'inspect') {
     const [mapId, cell] = state.inspecting.split(':');
     const obj = world.getMap(mapId).objects.get(cell);
@@ -518,15 +623,15 @@ function screenContent(kind) {
   const labelOf = (id) => OFFDAY_ACTIVITIES.find((a) => a.id === id).label;
   const plan = OFFDAY_SLOTS.map((name, i) => `${name} ${slots[i] ? labelOf(slots[i]) : '…'}`).join(' · ');
   const lifeLine = {
-    text: `자격증 공부 ${Math.round(state.life.study)}% · 체력 ${state.life.fitness}`,
+    text: `공부 ${Math.round(state.life.study)}% · 체력 ${state.life.fitness} · 잔고 ${formatWon(state.money)}`,
     color: '#5a5648',
   };
   if (slots.length < OFFDAY_SLOTS.length) {
     return {
       title: '휴무일',
-      subtitle,
-      lines: [{ text: `${OFFDAY_SLOTS[slots.length]}에는 뭘 할까?` }, { text: plan }, statLine, lifeLine],
-      options: OFFDAY_ACTIVITIES.map((a) => ({ label: a.label, desc: a.desc })),
+      subtitle: `${subtitle} · ${state.screenNote || `${OFFDAY_SLOTS[slots.length]}에는 뭘 할까?`}`,
+      lines: [{ text: plan }, statLine, lifeLine],
+      options: [...OFFDAY_ACTIVITIES, SHOP_OPTION].map((a) => ({ label: a.label, desc: a.desc })),
       selected: state.menuIndex,
     };
   }
@@ -543,6 +648,17 @@ function screenContent(kind) {
 const input = setupInput({
   onMenu(e) {
     if (state.screen) moveMenu(e);
+    else if (e.pick !== undefined) selectSlot(state, e.pick);
+  },
+  onWheel(delta) {
+    if (!state.screen) cycleSlot(state, delta);
+  },
+  onTap(x, y) {
+    if (state.screen) return;
+    const index = slotRects(capacity(state)).findIndex(
+      (r) => x >= r.x - 1 && x < r.x + r.w + 1 && y >= r.y - 1 && y < r.y + r.h + 1
+    );
+    if (index >= 0) selectSlot(state, index);
   },
   onInteract() {
     if (state.screen) {
@@ -588,7 +704,7 @@ function updatePlayer(dt) {
   // 실제로 움직인 거리만 피로도에 반영한다 (벽에 비비는 동안은 오르지 않음)
   const moved = Math.hypot(player.x - startX, player.y - startY);
   player.walked += moved;
-  addWalkFatigue(state.stats, moved);
+  addWalkFatigue(state.stats, moved * (owns(state, 'boots') ? 0.5 : 1));
 }
 
 // ----- 고장 -----

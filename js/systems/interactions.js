@@ -2,7 +2,7 @@
 // 새 오브젝트 종류를 추가할 때는 HANDLERS에 prompt와 interact만 더하면 된다.
 //
 // game은 main.js가 넘겨주는 창구다:
-//   state, world, showMessage(), goTo(), startWork(), onRepaired(), commute(), openInspection()
+//   state, world, showMessage(), goTo(), startWork(), onRepaired(), commute(), openInspection(), openStorage()
 // prompt(obj, state)는 바라볼 때 띄울 안내, interact(obj, game)는 E를 눌렀을 때 동작이다.
 
 import { PANEL_STATE } from '../world/world.js';
@@ -18,6 +18,15 @@ import {
   COMMUTE_MINUTES,
 } from './life.js';
 import { INSPECTION_START, PIPE_REPLACE_SECONDS } from './inspection.js';
+import { checkTask, consumeTask } from './inventory.js';
+import { STORAGES } from '../../data/items.js';
+
+// 작업에 필요한 아이템이 없으면 안내하고 false
+function ready(game, taskId) {
+  const problem = checkTask(game.state, taskId);
+  if (problem) game.showMessage(problem, COLOR.ALERT, 3);
+  return !problem;
+}
 import { COLOR, PROMOTION_SECONDS } from '../render/hud.js';
 
 const INTERACT_RANGE = 1.8; // 칸
@@ -52,11 +61,13 @@ const inspectionPoint = {
     const point = state.inspection?.points[key];
     if (!point) return;
     if (obj.leaking && point.judged === 'abnormal') {
+      if (!ready(game, 'pipeReplace')) return;
       game.startWork({
         target: obj,
         seconds: PIPE_REPLACE_SECONDS,
         label: '누수 배관 교체 중',
         onComplete: () => {
+          consumeTask(state, 'pipeReplace');
           point.fixed = true;
           obj.leaking = false;
           applyEffect(state.stats, EFFECTS.repair);
@@ -71,6 +82,10 @@ const inspectionPoint = {
     }
     if (!inspectionOpen(state)) {
       game.showMessage(`검침은 ${INSPECTION_START}부터입니다`);
+      return;
+    }
+    if (obj.type === 'pit' && checkTask(state, 'pitCheck')) {
+      game.showMessage('비트 안이 어두워 보이지 않는다. 손전등이 필요하다', COLOR.ALERT, 3);
       return;
     }
     game.openInspection(key);
@@ -115,6 +130,7 @@ const HANDLERS = {
         game.showMessage('이상 없음');
         return;
       }
+      if (!ready(game, 'short')) return;
       game.startWork({
         target: panel,
         seconds: REPAIR_SECONDS,
@@ -207,6 +223,11 @@ const HANDLERS = {
       applyEffect(state.stats, MORNING_EFFECTS.breakfast);
       skipFor(state.clock, BREAKFAST_MINUTES, '아침 먹는 중…');
     },
+  },
+
+  storage: {
+    prompt: (obj) => `${KEY_HINT}${STORAGES[obj.storage].name} 열기`,
+    interact: (obj, game) => game.openStorage(obj.storage),
   },
 
   hmi: inspectionPoint,

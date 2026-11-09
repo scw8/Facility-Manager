@@ -4,9 +4,10 @@
 import { workSpeed, failChance } from './stats.js';
 
 // job = { target, seconds, label, onComplete }
-export function startWork(state, job) {
-  const speed = workSpeed(state.stats);
-  state.work = { ...job, elapsed: 0, duration: job.seconds / speed, slowed: speed < 1 };
+// toolBonus: 장비로 빨라지는 배율 (전동드릴 등). 컨디션 저하 표시와는 따로 계산한다
+export function startWork(state, job, toolBonus = 1) {
+  const speed = workSpeed(state.stats) * toolBonus;
+  state.work = { ...job, elapsed: 0, duration: job.seconds / speed, slowed: workSpeed(state.stats) < 1 };
 }
 
 export function workProgress(work) {

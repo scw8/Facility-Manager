@@ -7,6 +7,8 @@ import { transitionAlpha } from '../core/transition.js';
 import { formatTime, formatDate, isBetween, isSkipping } from '../core/clock.js';
 import { LIMITS } from '../systems/stats.js';
 import { workProgress } from '../systems/work.js';
+import { capacity, heldItem, itemName } from '../systems/inventory.js';
+import { drawIcon } from './icons.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 import { drawMinimap, minimapRect } from './minimap.js';
 
@@ -226,6 +228,45 @@ function drawMultimeter(ctx, bob, showOk, lift) {
   rect('#c99468', w - 1, 27, 9, h);
 }
 
+// ----- 손에 든 아이템 -----
+
+function drawHeldItem(ctx, id, bob, lift) {
+  const x = Math.round(SCREEN_W / 2 - 24 + Math.sin(bob) * 3);
+  const y = Math.round(128 - Math.abs(Math.cos(bob)) * 3 - lift);
+  // 쥔 손
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + 13, y + 38, 22, SCREEN_H - y - 38);
+  ctx.fillStyle = '#c99468';
+  ctx.fillRect(x + 14, y + 39, 20, SCREEN_H - y - 39);
+  drawIcon(ctx, id, x, y, 4);
+}
+
+// ----- 아이템 슬롯 -----
+
+const SLOT = 13;
+const SLOT_GAP = 1;
+const SLOT_Y = SCREEN_H - SLOT - 2;
+
+// 슬롯 n개의 화면 위치 (터치 입력에서도 쓴다)
+export function slotRects(n) {
+  const total = n * SLOT + (n - 1) * SLOT_GAP;
+  const left = Math.round(SCREEN_W / 2 - total / 2);
+  return Array.from({ length: n }, (_, i) => ({ x: left + i * (SLOT + SLOT_GAP), y: SLOT_Y, w: SLOT, h: SLOT }));
+}
+
+function drawSlots(ctx, state) {
+  const rects = slotRects(capacity(state));
+  rects.forEach((r, i) => {
+    const selected = i === state.bag.selected;
+    ctx.fillStyle = selected ? '#ffe046' : '#000';
+    ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
+    ctx.fillStyle = 'rgba(30, 32, 30, 0.85)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    const id = state.bag.items[i];
+    if (id) drawIcon(ctx, id, r.x, r.y);
+  });
+}
+
 // ----- 전체 HUD -----
 
 // 지금이 식사 시간이면 시계 옆에 표시할 이름
@@ -238,7 +279,11 @@ function mealLabel(clock) {
 export function drawHudGraphics(ctx, state, map) {
   const { progress, effects, player, time } = state;
 
-  drawMultimeter(ctx, player.walked * 3.2, effects.okTimer > 0, effects.okTimer > 0 ? 5 : 0);
+  const held = heldItem(state);
+  const lift = effects.okTimer > 0 ? 5 : 0;
+  if (held === 'tester') drawMultimeter(ctx, player.walked * 3.2, effects.okTimer > 0, lift);
+  else if (held) drawHeldItem(ctx, held, player.walked * 3.2, lift);
+  drawSlots(ctx, state);
 
   drawFace(ctx, FACE_X, FACE_Y, effects.smileTimer > 0);
 
@@ -358,6 +403,11 @@ export function drawHudText(layer, state, map) {
     }
   } else if (prompt && !transition) {
     layer.text(prompt, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
+  }
+
+  const held = heldItem(state);
+  if (held) {
+    layer.text(itemName(held), SCREEN_W / 2, SCREEN_H - 24, { align: 'center', size: HUD_FONT_SIZE_SMALL });
   }
 
   // 좌측 하단 캐릭터 상태 묶음

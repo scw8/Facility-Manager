@@ -1,5 +1,6 @@
 // 키보드·터치 입력. 이동 키와 사용 키(use)는 눌림 상태로, 사용 키를 누른 순간은 콜백으로 전달한다.
-// 메뉴 화면용으로 위/아래(onMenu({ move }))와 숫자키(onMenu({ pick }))도 전달한다.
+// 위/아래(onMenu({ move }))와 숫자키(onMenu({ pick }))는 메뉴 선택이나 아이템 슬롯 선택에 쓴다.
+// 마우스 휠은 onWheel(±1), 게임 화면 터치·클릭은 onTap(x, y) (320×200 좌표)로 전달한다.
 
 const KEY_BINDINGS = {
   KeyW: 'forward',
@@ -14,7 +15,7 @@ const KEY_BINDINGS = {
 
 const INTERACT_KEYS = new Set(['KeyE', 'Space']);
 
-export function setupInput({ onInteract, onMenu }) {
+export function setupInput({ onInteract, onMenu, onWheel, onTap }) {
   const input = { forward: false, back: false, left: false, right: false, use: false };
 
   window.addEventListener('keydown', (e) => {
@@ -77,6 +78,20 @@ export function setupInput({ onInteract, onMenu }) {
       input.use = false;
     });
   }
+
+  window.addEventListener(
+    'wheel',
+    (e) => {
+      if (e.deltaY !== 0) onWheel(Math.sign(e.deltaY));
+    },
+    { passive: true }
+  );
+
+  const view = document.getElementById('view');
+  view.addEventListener('pointerdown', (e) => {
+    const rect = view.getBoundingClientRect();
+    onTap(((e.clientX - rect.left) / rect.width) * view.width, ((e.clientY - rect.top) / rect.height) * view.height);
+  });
 
   // 길게 눌렀을 때 뜨는 메뉴가 조작을 끊지 않게 한다
   document.getElementById('touch').addEventListener('contextmenu', (e) => e.preventDefault());

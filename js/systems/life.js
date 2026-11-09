@@ -2,6 +2,7 @@
 // 수치는 모두 [초기값]이며 플레이 테스트로 조정한다.
 
 import { applyEffect } from './stats.js';
+import { owns, FRIENDS_COST, formatWon } from './economy.js';
 
 export function createLife() {
   return {
@@ -20,8 +21,9 @@ export function fatigueMultiplier(life) {
   return 1 - Math.min(life.fitness, FITNESS_MAX) * FITNESS_FATIGUE_RELIEF;
 }
 
-export function studyEfficiency(stats) {
-  return stats.stress >= STUDY_STRESSED ? 0.5 : 1;
+export function studyEfficiency(state) {
+  const base = state.stats.stress >= STUDY_STRESSED ? 0.5 : 1;
+  return base * (owns(state, 'textbook') ? 1.5 : 1);
 }
 
 // ----- 휴무일 -----
@@ -33,31 +35,36 @@ export const OFFDAY_ACTIVITIES = [
     id: 'sleep',
     label: '잠자기',
     desc: '피로 −25',
-    apply: (stats) => applyEffect(stats, { fatigue: -25 }),
+    apply: (state) => applyEffect(state.stats, { fatigue: -25 }),
   },
   {
     id: 'study',
     label: '자격증 공부',
     desc: '공부 +8 · 스트레스 +8',
-    apply(stats, life) {
-      life.study = Math.min(100, life.study + STUDY_PER_SESSION * studyEfficiency(stats));
-      applyEffect(stats, { stress: 8, fatigue: 3 });
+    apply(state) {
+      const { life } = state;
+      life.study = Math.min(100, life.study + STUDY_PER_SESSION * studyEfficiency(state));
+      applyEffect(state.stats, { stress: 8, fatigue: 3 });
     },
   },
   {
     id: 'exercise',
     label: '운동',
     desc: '피로 +8 · 스트레스 −12 · 체력↑',
-    apply(stats, life) {
-      life.fitness = Math.min(FITNESS_MAX, life.fitness + 1);
-      applyEffect(stats, { fatigue: 8, stress: -12 });
+    apply(state) {
+      state.life.fitness = Math.min(FITNESS_MAX, state.life.fitness + 1);
+      applyEffect(state.stats, { fatigue: 8, stress: -12 });
     },
   },
   {
     id: 'friends',
     label: '친구 만나기',
-    desc: '스트레스 −20 · 피로 +5',
-    apply: (stats) => applyEffect(stats, { stress: -20, fatigue: 5 }),
+    desc: `스트레스 −20 · ${formatWon(FRIENDS_COST)}`,
+    cost: FRIENDS_COST,
+    apply(state) {
+      state.money -= FRIENDS_COST;
+      applyEffect(state.stats, { stress: -20, fatigue: 5 });
+    },
   },
 ];
 
@@ -68,8 +75,12 @@ export function beginOffDay(stats) {
   stats.hygiene = 100;
 }
 
-export function doActivity(id, stats, life) {
-  OFFDAY_ACTIVITIES.find((a) => a.id === id).apply(stats, life);
+// 활동을 한다. 돈이 모자라면 하지 않고 이유를 돌려준다
+export function doActivity(id, state) {
+  const activity = OFFDAY_ACTIVITIES.find((a) => a.id === id);
+  if (activity.cost && state.money < activity.cost) return '잔고가 부족하다';
+  activity.apply(state);
+  return null;
 }
 
 // ----- 근무일 아침 -----
