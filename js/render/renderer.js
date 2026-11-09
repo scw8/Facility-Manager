@@ -6,7 +6,7 @@ import { TEX_SIZE, TEXTURE_VARIANTS, TEXTURES } from './textures.js';
 
 export const SCREEN_W = 320;
 export const SCREEN_H = 200;
-export const FOV_PLANE = 0.66; // 시야 평면 길이 (약 67도)
+export const FOV_PLANE = 0.9; // 시야 평면 길이 (약 84도). 클수록 넓게 보이고 벽이 작아진다
 const PROJECTION = SCREEN_W / 2 / FOV_PLANE; // 벽 칸이 정사각형으로 보이는 투영 배율
 
 const TEX_MASK = TEX_SIZE - 1;
@@ -23,7 +23,7 @@ for (let y = 0; y < SCREEN_H; y++) {
     const dx = (x - SCREEN_W / 2) / (SCREEN_W / 2);
     const dy = (y - SCREEN_H / 2) / (SCREEN_H / 2);
     const r2 = dx * dx * 0.9 + dy * dy * 0.75;
-    const light = Math.max(0.26, Math.min(1, 1.12 - r2 * 0.95));
+    const light = Math.max(0.42, Math.min(1, 1.15 - r2 * 0.75));
     flashlightMask[y * SCREEN_W + x] = Math.round(light * SHADE_ONE);
   }
 }
