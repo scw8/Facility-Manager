@@ -24,11 +24,24 @@ import {
   addWalkFatigue,
   applyEffect,
   breakdown,
-  restOffDay,
   EFFECTS,
   LIMITS,
 } from './systems/stats.js';
 import { startWork, updateWork } from './systems/work.js';
+import {
+  createLife,
+  createMorning,
+  fatigueMultiplier,
+  beginOffDay,
+  doActivity,
+  wakeUp,
+  OFFDAY_SLOTS,
+  OFFDAY_ACTIVITIES,
+  WAKE_OPTIONS,
+  COMMUTE_MINUTES,
+  FORCE_COMMUTE_AT,
+  MORNING_EFFECTS,
+} from './systems/life.js';
 import { findTarget, promptFor, interact } from './systems/interactions.js';
 import { createRenderer } from './render/renderer.js';
 import { createTextLayer, drawHudGraphics, drawHudText, HUD_FONT, COLOR } from './render/hud.js';
@@ -60,10 +73,16 @@ const state = {
   player: { ...world.getMap(START_MAP_ID).spawn, walked: 0 },
   progress: createProgress(),
   stats: createStats(),
+  life: createLife(),
   clock: createClock(),
+  phase: 'home', // 'home' 출근 전 집 | 'work' 근무 중
+  morning: createMorning(), // 아침 루틴 (씻었는지, 먹었는지)
+  offday: { slots: [] }, // 휴무일에 고른 활동 id들
   shift: null, // createShiftLog()로 채운다
-  // 게임을 멈추고 띄우는 화면: 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
-  screen: null,
+  // 게임을 멈추고 띄우는 화면:
+  // 'wake' 기상 시각 | 'report' 업무일지 | 'offday' 휴무일 | 'collapse' 쓰러짐 | 'fired' 해고
+  screen: 'wake',
+  menuIndex: 0, // 선택지 화면에서 고른 줄
   work: null, // 진행 중인 작업 게이지
   time: 0,
   nextFaultTimer: 0, // 게임 분
@@ -123,6 +142,7 @@ const game = {
   startWork(job) {
     startWork(state, job);
   },
+  commute: () => commute(),
   onRepaired(panel, faultType, promotions) {
     const { shift, stats } = state;
     shift.repairs += 1;
@@ -175,23 +195,54 @@ function fire() {
   saveGame(state, world);
 }
 
-// 휴무일을 보내고 다음 근무일 아침 사무실에서 시작한다
-function startNextShift() {
-  const office = world.getMap('office');
-  state.clock.day += 1;
-  state.clock.minutes = SHIFT_START;
-  state.mapId = office.id;
-  Object.assign(state.player, office.spawn);
-  state.shift = createShiftLog();
+// 고른 시각에 집에서 일어난다
+function wakeAtHome(option) {
+  const home = world.getMap('home');
+  wakeUp(state.stats, option);
+  state.clock.minutes = option.minutes;
+  cancelSkip(state.clock);
+  state.phase = 'home';
+  state.mapId = home.id;
+  Object.assign(state.player, home.spawn);
+  state.morning = createMorning();
   state.screen = null;
+  showMessage('씻고, 먹고, 08:00까지 출근!', COLOR.INFO, 4);
+  saveGame(state, world);
+}
+
+// 현관문을 나서면 30분 뒤 관리사무소에 도착한다. 08:00을 넘기면 지각.
+function commute() {
+  if (state.transition || state.phase !== 'home') return;
+  const office = world.getMap('office');
+  const arrival = state.clock.minutes + COMMUTE_MINUTES;
+  const late = Math.round(arrival - SHIFT_START);
+
+  stopActivities();
+  state.clock.minutes = Math.max(arrival, SHIFT_START);
+  state.phase = 'work';
+  state.shift = createShiftLog();
+  if (late > 0) {
+    applyEffect(state.stats, MORNING_EFFECTS.late);
+    let penalty = MORNING_EFFECTS.late.reputation;
+    if (late > 30) {
+      applyEffect(state.stats, MORNING_EFFECTS.veryLate);
+      penalty += MORNING_EFFECTS.veryLate.reputation;
+    }
+    state.shift.notes.push(`지각 ${late}분 (평판 ${penalty})`);
+    showMessage(`${late}분 지각했다…`, COLOR.ALERT, 4);
+  } else {
+    showMessage(`${formatDate(state.clock.day)} 출근. 오늘도 안전 근무!`, COLOR.INFO, 3.5);
+  }
+
   // 남은 고장은 오늘 새로 접수된 것으로 본다 (쉬는 동안의 방치 감점이 한꺼번에 쏟아지지 않게)
   const now = absoluteMinutes(state.clock);
   for (const panel of world.faults()) {
     panel.faultSince = now;
     panel.lastPenalty = now;
   }
-  showMessage(`${formatDate(state.clock.day)} 출근. 오늘도 안전 근무!`, COLOR.INFO, 3.5);
-  saveGame(state, world);
+  if (world.countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_MINUTES;
+
+  beginTransition(state, office.id, office.spawn, '출근 중…');
 }
 
 function restartGame() {
@@ -200,19 +251,46 @@ function restartGame() {
   window.location.reload();
 }
 
+function openScreen(kind) {
+  state.screen = kind;
+  state.menuIndex = 0;
+}
+
+// 지금 화면의 선택지 (없으면 null)
+function screenOptions() {
+  if (state.screen === 'wake') return WAKE_OPTIONS;
+  if (state.screen === 'offday' && state.offday.slots.length < OFFDAY_SLOTS.length) {
+    return OFFDAY_ACTIVITIES;
+  }
+  return null;
+}
+
+// E(사용)를 눌렀을 때: 선택지가 있으면 고른 것을 실행하고, 없으면 다음 화면으로
 function advanceScreen() {
+  const options = screenOptions();
   switch (state.screen) {
+    case 'wake':
+      wakeAtHome(options[state.menuIndex]);
+      return;
     case 'collapse':
-      state.screen = state.stats.reputation <= 0 ? 'fired' : 'report';
+      openScreen(state.stats.reputation <= 0 ? 'fired' : 'report');
       break;
     case 'report':
       state.clock.day += 1; // 퇴근 → 휴무일
-      restOffDay(state.stats);
-      state.screen = 'offday';
+      beginOffDay(state.stats);
+      state.offday = { slots: [] };
+      openScreen('offday');
       break;
     case 'offday':
-      startNextShift();
-      return;
+      if (options) {
+        const activity = options[state.menuIndex];
+        doActivity(activity.id, state.stats, state.life);
+        state.offday.slots.push(activity.id);
+      } else {
+        state.clock.day += 1; // 잠자리에 든다 → 다음 근무일 아침
+        openScreen('wake');
+      }
+      break;
     case 'fired':
       restartGame();
       return;
@@ -220,6 +298,18 @@ function advanceScreen() {
       return;
   }
   saveGame(state, world);
+}
+
+function moveMenu({ move, pick }) {
+  const options = screenOptions();
+  if (!options) return;
+  if (pick !== undefined) {
+    if (pick >= options.length) return;
+    state.menuIndex = pick;
+    advanceScreen();
+    return;
+  }
+  state.menuIndex = (state.menuIndex + move + options.length) % options.length;
 }
 
 const schedule = createSchedule([
@@ -301,22 +391,55 @@ function screenContent(kind) {
     };
   }
 
+  const statLine = {
+    text: `피로 ${Math.round(stats.fatigue)} · 포만 ${Math.round(stats.satiety)} · 위생 ${Math.round(stats.hygiene)} · 스트레스 ${Math.round(stats.stress)}`,
+    color: '#5a5648',
+  };
+
+  if (kind === 'wake') {
+    return {
+      title: '기상',
+      subtitle,
+      lines: [
+        { text: '몇 시에 일어날까? (08:00까지 출근)' },
+        { text: '씻기 15분 · 아침 20분 · 출근 30분', color: '#5a5648' },
+      ],
+      options: WAKE_OPTIONS.map((o) => ({ label: `${o.time} 기상`, desc: `피로 +${o.fatigue} · ${o.desc}` })),
+      selected: state.menuIndex,
+    };
+  }
+
+  // 휴무일
+  const { slots } = state.offday;
+  const labelOf = (id) => OFFDAY_ACTIVITIES.find((a) => a.id === id).label;
+  const plan = OFFDAY_SLOTS.map((name, i) => `${name} ${slots[i] ? labelOf(slots[i]) : '…'}`).join(' · ');
+  const lifeLine = {
+    text: `자격증 공부 ${Math.round(state.life.study)}% · 체력 ${state.life.fitness}`,
+    color: '#5a5648',
+  };
+  if (slots.length < OFFDAY_SLOTS.length) {
+    return {
+      title: '휴무일',
+      subtitle,
+      lines: [{ text: `${OFFDAY_SLOTS[slots.length]}에는 뭘 할까?` }, { text: plan }, statLine, lifeLine],
+      options: OFFDAY_ACTIVITIES.map((a) => ({ label: a.label, desc: a.desc })),
+      selected: state.menuIndex,
+    };
+  }
   return {
     title: '휴무일',
     subtitle,
-    lines: [
-      { text: '집에서 푹 쉬었다.' },
-      { text: '피로·포만감·위생이 회복되고' },
-      { text: '스트레스가 조금 줄었다.' },
-      { text: '(휴무일 활동 선택은 준비 중)', color: '#6a6658' },
-    ],
-    action: '다음 근무 출근',
+    lines: [{ text: plan }, statLine, lifeLine, { text: '내일은 근무일이다.' }],
+    action: '잠자리에 들기',
   };
 }
 
 // ----- 입력 -----
 
 const input = setupInput({
+  onMenu(e) {
+    if (state.screen) moveMenu(e);
+  },
   onInteract() {
     if (state.screen) {
       advanceScreen();
@@ -416,7 +539,7 @@ function update(dt) {
   const prevMinutes = clock.minutes;
   advanceClock(clock, dt);
   const elapsed = clock.minutes - prevMinutes;
-  tickStats(state.stats, elapsed, { resting });
+  tickStats(state.stats, elapsed, { resting, fatigueMultiplier: fatigueMultiplier(state.life) });
   schedule.tick(prevMinutes, clock.minutes);
   if (state.screen) return; // 방금 퇴근했다
 
@@ -430,7 +553,12 @@ function update(dt) {
 
   const target = findTarget(currentMap(), state.player);
   updateCurrentWork(dt, target);
-  updateFaults(elapsed);
+  if (state.phase === 'work') updateFaults(elapsed);
+
+  // 집에서 너무 늑장 부리면 허겁지겁 뛰쳐나간다
+  if (state.phase === 'home' && clock.minutes >= FORCE_COMMUTE_AT && !isSkipping(clock)) {
+    commute();
+  }
 
   const broken = breakdown(state.stats);
   if (broken) {
@@ -442,7 +570,7 @@ function update(dt) {
     return;
   }
 
-  state.prompt = promptFor(target);
+  state.prompt = promptFor(target, state);
 
   state.autosaveTimer -= dt;
   if (state.autosaveTimer <= 0) {
@@ -456,9 +584,10 @@ function draw() {
   renderer.drawWorld(map, state.player, state.time);
   drawHudGraphics(viewCtx, state, map);
   if (state.screen) {
-    drawScreenGraphics(viewCtx);
+    const content = screenContent(state.screen);
+    drawScreenGraphics(viewCtx, content);
     textLayer.clear();
-    drawScreenText(textLayer, screenContent(state.screen));
+    drawScreenText(textLayer, content);
   } else {
     drawHudText(textLayer, state, map);
   }
@@ -499,11 +628,10 @@ if (loadGame(state, world)) {
   if (world.countFaults() === 0 && state.nextFaultTimer <= 0) {
     state.nextFaultTimer = nextFaultDelay();
   }
-  if (!state.screen) showMessage('이어서 근무합니다', COLOR.INFO, 3);
+  if (!state.screen) showMessage('이어서 진행합니다', COLOR.INFO, 3);
 } else {
-  const now = absoluteMinutes(state.clock);
-  for (let i = 0; i < INITIAL_FAULTS; i++) world.spawnFault(null, now);
-  showMessage(`${formatDate(state.clock.day)} 출근. 고장난 분전반을 수리하세요`, COLOR.ALERT, 4);
+  // 새 게임: 첫 근무일 아침, 기상 시각을 고르는 화면부터 시작한다
+  for (let i = 0; i < INITIAL_FAULTS; i++) world.spawnFault();
 }
 
 // 개발용: 주소에 ?debug를 붙이면 콘솔에서 상태를 보고 프레임을 직접 돌릴 수 있다

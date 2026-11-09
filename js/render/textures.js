@@ -172,6 +172,16 @@ const WEAR = {
     chips: { count: 4, color: [22, 22, 22] },
   },
   lamp: { seed: 701, grime: 0.12 },
+  wallpaper: {
+    seed: 1201,
+    grime: 0.1,
+    patch: { color: [180, 160, 120], amount: 0.25, threshold: 0.66 }, // 누렇게 바랜 자리
+  },
+  wood: {
+    seed: 1301,
+    grime: 0.12,
+    lines: { count: 1, color: [70, 44, 24], strength: 0.25 },
+  },
   counter: {
     seed: 809,
     grime: 0.12,
@@ -181,6 +191,11 @@ const WEAR = {
     seed: 907,
     grime: 0.18,
     patch: { color: [90, 84, 70], amount: 0.3, threshold: 0.66 },
+  },
+  table: {
+    seed: 1103,
+    grime: 0.12,
+    patch: { color: [120, 100, 70], amount: 0.3, threshold: 0.66 },
   },
   shower: {
     seed: 1009,
@@ -381,6 +396,59 @@ function paintShower(put, rect) {
   rect(0, 0, TEX_SIZE, 1, 120, 124, 130); // 커튼 레일
 }
 
+// 부엌 벽 + 위쪽 찬장 + 식탁 위 밥·국·반찬
+function paintTable(put, rect) {
+  const rnd = makeRandom(103);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const v = 176 + rnd() * 8;
+      put(x, y, v, v - 6, v - 20); // 크림색 벽지
+    }
+  }
+  rect(1, 1, 30, 9, 150, 104, 64); // 찬장
+  rect(15, 1, 1, 9, 110, 74, 44);
+  rect(12, 5, 2, 2, 220, 200, 150);
+  rect(17, 5, 2, 2, 220, 200, 150);
+  rect(0, 19, TEX_SIZE, 3, 168, 116, 70); // 식탁 상판
+  rect(0, 22, TEX_SIZE, 1, 110, 74, 44);
+  rect(3, 22, 2, 10, 120, 82, 50); // 다리
+  rect(27, 22, 2, 10, 120, 82, 50);
+  rect(5, 15, 6, 4, 240, 240, 236); // 밥공기
+  rect(6, 14, 4, 1, 250, 250, 250);
+  rect(13, 15, 7, 4, 120, 60, 40); // 국그릇
+  rect(14, 15, 5, 1, 200, 120, 60);
+  rect(22, 17, 6, 2, 80, 150, 60); // 반찬
+}
+
+// 집 벽지: 연한 줄무늬 + 아래쪽 걸레받이
+function paintWallpaper(put, rect) {
+  const rnd = makeRandom(113);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const stripe = x % 8 < 4 ? 6 : 0;
+      const v = 190 + stripe + rnd() * 5;
+      put(x, y, v, v - 4, v - 18);
+    }
+  }
+  rect(0, 28, TEX_SIZE, 4, 120, 86, 56);
+  rect(0, 28, TEX_SIZE, 1, 150, 112, 76);
+}
+
+// 마룻바닥: 엇갈린 나무 판자
+function paintWood(put) {
+  const rnd = makeRandom(127);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    const plank = Math.floor(y / 8);
+    const offset = plank % 2 === 0 ? 0 : 12;
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const joint = y % 8 === 7 || (x + offset) % 24 === 23;
+      const grain = Math.sin((x + plank * 5) * 0.9) * 4;
+      const v = joint ? -40 : rnd() * 8 + grain;
+      put(x, y, 150 + v, 102 + v, 62 + v);
+    }
+  }
+}
+
 const LAMP_RED_ON = [255, 40, 30];
 const LAMP_OFF = [70, 74, 70];
 const LAMP_GREEN = [60, 255, 110];
@@ -404,11 +472,14 @@ export const TEXTURES = {
   [TILE.COUNTER]: [createTexture(paintCounter, WEAR.counter)],
   [TILE.BED]: [createTexture(paintBed, WEAR.bed)],
   [TILE.SHOWER]: [createTexture(paintShower, WEAR.shower)],
+  [TILE.TABLE]: [createTexture(paintTable, WEAR.table)],
   panelNormal: createTexture((p, r) => paintPanel(p, r, LAMP_OFF, NO_TINT), WEAR.panel),
   panelFaultOn: createTexture((p, r) => paintPanel(p, r, LAMP_RED_ON, [110, -70, -80]), WEAR.panel),
   panelFaultOff: createTexture((p, r) => paintPanel(p, r, [120, 20, 16], [24, -30, -34]), WEAR.panel),
   panelFixed: createTexture((p, r) => paintPanel(p, r, LAMP_GREEN, NO_TINT), WEAR.panel),
   floor: createVariants(paintFloor, WEAR.floor),
+  wood: createVariants(paintWood, WEAR.wood),
+  wallpaper: createVariants(paintWallpaper, WEAR.wallpaper),
   ceiling: createVariants(paintCeiling, WEAR.ceiling),
   lampOn: createTexture((p, r) => paintLamp(p, r, [255, 255, 236]), WEAR.lamp),
   lampOff: createTexture((p, r) => paintLamp(p, r, [74, 76, 72]), WEAR.lamp),

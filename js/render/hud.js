@@ -313,6 +313,14 @@ export function drawHudText(layer, state, map) {
   if (meal) layer.text(meal, HUD_MARGIN + 48, HUD_MARGIN, { color: '#ffd27a' });
   layer.text(formatDate(clock.day), HUD_MARGIN, HUD_MARGIN + 11, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
   layer.text(map.name, HUD_MARGIN, HUD_MARGIN + 19, { size: HUD_FONT_SIZE_SMALL, color: '#c8d0c8' });
+  if (state.phase === 'home') {
+    const morning = state.morning;
+    const todo = [!morning.washed && '씻기', !morning.ate && '아침'].filter(Boolean);
+    layer.text(`출근 08:00까지${todo.length ? ` · 남은 일: ${todo.join(', ')}` : ''}`, HUD_MARGIN, HUD_MARGIN + 27, {
+      size: HUD_FONT_SIZE_SMALL,
+      color: '#ffd27a',
+    });
+  }
 
   if (isSkipping(clock)) {
     layer.text(clock.skip.label, SCREEN_W / 2, SCREEN_H / 2 - 6, { align: 'center' });

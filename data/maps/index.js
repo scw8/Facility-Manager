@@ -3,8 +3,9 @@
 import b1 from './b1.js';
 import office from './office.js';
 import cafeteria from './cafeteria.js';
+import home from './home.js';
 
-export const MAP_DATA = [b1, office, cafeteria];
+export const MAP_DATA = [b1, office, cafeteria, home];
 
-// 근무는 관리사무소에서 시작한다
-export const START_MAP_ID = 'office';
+// 게임은 집에서 일어나며 시작한다
+export const START_MAP_ID = 'home';

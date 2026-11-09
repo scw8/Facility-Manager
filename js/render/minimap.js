@@ -17,6 +17,7 @@ const TILE_COLORS = {
   [TILE.COUNTER]: '#e0c060',
   [TILE.BED]: '#5a7ac8',
   [TILE.SHOWER]: '#8fd0e8',
+  [TILE.TABLE]: '#c08850',
 };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

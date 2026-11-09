@@ -2,13 +2,21 @@
 // 새 오브젝트 종류를 추가할 때는 HANDLERS에 prompt와 interact만 더하면 된다.
 //
 // game은 main.js가 넘겨주는 창구다:
-//   state, world, showMessage(), goTo(), startWork(), onRepaired()
+//   state, world, showMessage(), goTo(), startWork(), onRepaired(), commute()
+// prompt(obj, state)는 바라볼 때 띄울 안내, interact(obj, game)는 E를 눌렀을 때 동작이다.
 
 import { PANEL_STATE } from '../world/world.js';
 import { TILE } from '../world/tiles.js';
 import { completeRepair } from './progress.js';
 import { applyEffect, EFFECTS } from './stats.js';
 import { isBetween, skipFor, skipUntil } from '../core/clock.js';
+import {
+  MORNING_EFFECTS,
+  WASH_MINUTES,
+  BREAKFAST_MINUTES,
+  SNOOZE_MINUTES,
+  COMMUTE_MINUTES,
+} from './life.js';
 import { COLOR, PROMOTION_SECONDS } from '../render/hud.js';
 
 const INTERACT_RANGE = 1.8; // 칸
@@ -24,6 +32,8 @@ const REST_UNTIL = '06:00';
 
 // 터치 기기에는 E키가 없으므로 안내 문구에서 뺀다
 const KEY_HINT = window.matchMedia('(pointer: coarse)').matches ? '' : '[E] ';
+
+const atHome = (state) => state.phase === 'home';
 
 function currentMeal(clock) {
   if (isBetween(clock, '12:00', '13:00')) return 'lunch';
@@ -73,9 +83,16 @@ const HANDLERS = {
   },
 
   door: {
-    prompt: (door) => (door.to ? `${KEY_HINT}문 열기` : null),
+    prompt(door) {
+      if (door.commute) return `${KEY_HINT}출근하기 (${COMMUTE_MINUTES}분)`;
+      return door.to ? `${KEY_HINT}문 열기` : null;
+    },
 
     interact(door, game) {
+      if (door.commute) {
+        game.commute();
+        return;
+      }
       if (!door.to) {
         game.showMessage(door.locked || '잠겨 있습니다');
         return;
@@ -110,6 +127,16 @@ const HANDLERS = {
 
     interact(_shower, game) {
       const { state } = game;
+      if (atHome(state)) {
+        if (state.morning.washed) {
+          game.showMessage('이미 씻었다');
+          return;
+        }
+        state.morning.washed = true;
+        applyEffect(state.stats, MORNING_EFFECTS.wash);
+        skipFor(state.clock, WASH_MINUTES, '씻는 중…');
+        return;
+      }
       if (!isBetween(state.clock, SHOWER_FROM, '08:00')) {
         game.showMessage(`검침을 마친 뒤(${SHOWER_FROM} 이후)에 씻을 수 있습니다`);
         return;
@@ -125,11 +152,34 @@ const HANDLERS = {
     },
   },
 
+  table: {
+    prompt: () => `${KEY_HINT}아침 먹기 (${BREAKFAST_MINUTES}분)`,
+
+    interact(_table, game) {
+      const { state } = game;
+      if (state.morning.ate) {
+        game.showMessage('이미 먹었다');
+        return;
+      }
+      state.morning.ate = true;
+      applyEffect(state.stats, MORNING_EFFECTS.breakfast);
+      skipFor(state.clock, BREAKFAST_MINUTES, '아침 먹는 중…');
+    },
+  },
+
   bed: {
-    prompt: () => `${KEY_HINT}휴식 (${REST_FROM}~${REST_UNTIL})`,
+    prompt: (_bed, state) =>
+      atHome(state)
+        ? `${KEY_HINT}${SNOOZE_MINUTES}분 더 자기`
+        : `${KEY_HINT}휴식 (${REST_FROM}~${REST_UNTIL})`,
 
     interact(_bed, game) {
       const { state } = game;
+      if (atHome(state)) {
+        applyEffect(state.stats, MORNING_EFFECTS.snooze);
+        skipFor(state.clock, SNOOZE_MINUTES, '조금만 더…', true);
+        return;
+      }
       if (!isBetween(state.clock, REST_FROM, REST_UNTIL)) {
         game.showMessage(`야간 휴게 시간(${REST_FROM}~${REST_UNTIL})에만 쉴 수 있습니다`);
         return;
@@ -147,9 +197,9 @@ export function findTarget(map, player) {
   return map.objectAt(hit.cellX, hit.cellY);
 }
 
-export function promptFor(obj) {
+export function promptFor(obj, state) {
   if (!obj) return null;
-  return HANDLERS[obj.type]?.prompt(obj) ?? null;
+  return HANDLERS[obj.type]?.prompt(obj, state) ?? null;
 }
 
 export function interact(obj, game) {

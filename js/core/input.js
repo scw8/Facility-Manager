@@ -1,4 +1,5 @@
 // 키보드·터치 입력. 이동 키와 사용 키(use)는 눌림 상태로, 사용 키를 누른 순간은 콜백으로 전달한다.
+// 메뉴 화면용으로 위/아래(onMenu({ move }))와 숫자키(onMenu({ pick }))도 전달한다.
 
 const KEY_BINDINGS = {
   KeyW: 'forward',
@@ -13,7 +14,7 @@ const KEY_BINDINGS = {
 
 const INTERACT_KEYS = new Set(['KeyE', 'Space']);
 
-export function setupInput({ onInteract }) {
+export function setupInput({ onInteract, onMenu }) {
   const input = { forward: false, back: false, left: false, right: false, use: false };
 
   window.addEventListener('keydown', (e) => {
@@ -21,6 +22,10 @@ export function setupInput({ onInteract }) {
     if (action) {
       input[action] = true;
       e.preventDefault();
+      if (!e.repeat && action === 'forward') onMenu({ move: -1 });
+      if (!e.repeat && action === 'back') onMenu({ move: 1 });
+    } else if (/^Digit[1-9]$/.test(e.code)) {
+      onMenu({ pick: Number(e.code.slice(5)) - 1 });
     } else if (INTERACT_KEYS.has(e.code)) {
       if (!e.repeat) {
         input.use = true;
@@ -51,6 +56,8 @@ export function setupInput({ onInteract }) {
       e.preventDefault();
       input[action] = true;
       button.classList.add('active');
+      if (action === 'forward') onMenu({ move: -1 });
+      if (action === 'back') onMenu({ move: 1 });
     });
     button.addEventListener('pointerup', release);
     button.addEventListener('pointercancel', release);

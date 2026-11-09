@@ -69,6 +69,7 @@ export function createRenderer(ctx) {
     const leftY = dirY - planeY;
     const halfH = SCREEN_H / 2;
     const { spacing, offsetX, offsetY } = map.lamps;
+    const floorTexture = TEXTURES[map.theme.floor];
 
     for (let y = halfH; y < SCREEN_H; y++) {
       const rowDist = (0.5 * PROJECTION) / (y - halfH + 0.5);
@@ -88,7 +89,7 @@ export function createRenderer(ctx) {
         const texel = texY * TEX_SIZE + texX;
 
         const variant = cellHash(cellX, cellY) % TEXTURE_VARIANTS;
-        plot(floorRow + x, TEXTURES.floor[variant][texel], shade);
+        plot(floorRow + x, floorTexture[variant][texel], shade);
 
         let ceiling = TEXTURES.ceiling[variant];
         let ceilingShade = shade;
@@ -113,7 +114,8 @@ export function createRenderer(ctx) {
 
   function wallTexture(map, hit, blinkOn) {
     if (hit.tile !== TILE.PANEL) {
-      const variants = TEXTURES[hit.tile];
+      const themed = hit.tile === TILE.CONCRETE && map.theme.wall;
+      const variants = themed ? TEXTURES[map.theme.wall] : TEXTURES[hit.tile];
       return variants[cellHash(hit.cellX, hit.cellY) % variants.length];
     }
     const panel = map.objectAt(hit.cellX, hit.cellY);

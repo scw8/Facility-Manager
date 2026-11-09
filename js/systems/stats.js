@@ -47,11 +47,12 @@ export function applyEffect(stats, effect) {
   }
 }
 
-// 게임 시간이 minutes분 흐를 때의 자연 변화
-export function tickStats(stats, minutes, { resting = false } = {}) {
+// 게임 시간이 minutes분 흐를 때의 자연 변화.
+// fatigueMultiplier: 깨어 있을 때 피로가 쌓이는 배율 (운동을 하면 1보다 작아진다)
+export function tickStats(stats, minutes, { resting = false, fatigueMultiplier = 1 } = {}) {
   const hours = minutes / 60;
   applyEffect(stats, {
-    fatigue: (resting ? FATIGUE_REST_PER_HOUR : FATIGUE_PER_HOUR) * hours,
+    fatigue: (resting ? FATIGUE_REST_PER_HOUR : FATIGUE_PER_HOUR * fatigueMultiplier) * hours,
     satiety: (resting ? SATIETY_REST_PER_HOUR : SATIETY_PER_HOUR) * hours,
     hygiene: HYGIENE_PER_HOUR * hours,
   });
@@ -84,12 +85,4 @@ export function breakdown(stats) {
   if (stats.satiety <= 0) return 'hunger';
   if (stats.stress >= 100) return 'burnout';
   return null;
-}
-
-// 휴무일을 보낸 뒤의 상태 (Phase 3에서 휴무일 활동과 아침 루틴으로 대체)
-export function restOffDay(stats) {
-  stats.fatigue = 0;
-  stats.satiety = 80;
-  stats.hygiene = 100;
-  stats.stress = clamp(stats.stress - 20);
 }

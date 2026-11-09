@@ -94,6 +94,8 @@ export function createMap(data) {
     width,
     height,
     spawn: data.spawn,
+    // 맵 분위기: wall은 콘크리트(#) 칸에 쓸 텍스처, floor는 바닥 텍스처 이름
+    theme: { wall: null, floor: 'floor', ...data.theme },
     lamps: { ...DEFAULT_LAMPS, ...data.lamps },
     objects,
     tileAt,

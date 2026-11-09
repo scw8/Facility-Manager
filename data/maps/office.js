@@ -2,7 +2,7 @@
 // 위쪽 왼쪽 방: 휴게실(침상) / 위쪽 오른쪽 방: 샤워실
 // 서쪽 문: 구내식당 / 동쪽 문: 지하 1층
 //
-// 범례: . 바닥  # 콘크리트  % 배관벽  E 분전반  D 문  C 배식대  R 침상  S 샤워부스
+// 범례: . 바닥  # 콘크리트  % 배관벽  E 분전반  D 문  C 배식대  R 침상  S 샤워부스  T 식탁
 
 export default {
   id: 'office',
@@ -21,6 +21,7 @@ export default {
   ],
   spawn: { x: 11.5, y: 5.5, angle: Math.PI },
   lamps: { spacing: 3, offsetX: 1, offsetY: 2 },
+  theme: { wall: 'wallpaper' },
   doors: [
     { x: 0, y: 5, to: 'cafeteria', spawn: { x: 8.5, y: 3.5, angle: Math.PI } },
     { x: 13, y: 5, to: 'b1', spawn: { x: 1.5, y: 9.5, angle: 0 } },
