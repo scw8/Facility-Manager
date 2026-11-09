@@ -114,7 +114,13 @@ export function currentObjective(state, world) {
   const meal = isBetween(clock, '12:00', '13:00') ? 'lunch' : isBetween(clock, '18:00', '19:00') ? 'dinner' : null;
   if (meal && !state.shift.meals.includes(meal)) return '식사 시간 — 서쪽 문 구내식당';
 
-  if (world.countFaults() > 0) {
+  const faults = world.faults();
+  if (faults.some((f) => f.type === 'leak')) {
+    const problem = checkTask(state, 'pipeReplace');
+    if (problem && problem.startsWith('필요')) return '배관 누수! 공구실에서 파이프렌치·몽키·테이프·교체용 배관 챙기기';
+    return '지하 1층 배관 누수 교체 (미니맵 파란 점)';
+  }
+  if (faults.length > 0) {
     const problem = checkTask(state, 'short');
     if (problem && problem.startsWith('필요')) return '공구실(남서쪽 방)에서 수리 공구 챙기기';
     return '지하 1층 고장 분전반 수리 (미니맵 빨간 점)';

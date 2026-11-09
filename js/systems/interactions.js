@@ -28,7 +28,7 @@ function ready(game, taskId) {
   if (problem) game.showMessage(problem, COLOR.ALERT, 3);
   return !problem;
 }
-import { COLOR, PROMOTION_SECONDS } from '../render/hud.js';
+import { COLOR } from '../render/hud.js';
 
 const INTERACT_RANGE = 1.8; // 칸
 const OK_SECONDS = 1.2;
@@ -103,7 +103,7 @@ function finishRepair(panel, game) {
   const { state } = game;
   const { effects } = state;
   const faultType = panel.faultType;
-  const promotions = completeRepair(state.progress, faultType);
+  completeRepair(state.progress, faultType);
   panel.state = PANEL_STATE.FIXED;
   panel.faultType = null;
   state.lastRepaired = panel;
@@ -112,13 +112,7 @@ function finishRepair(panel, game) {
   effects.smileTimer = SMILE_SECONDS;
   game.showMessage('누전 수리 완료', COLOR.GOOD);
 
-  if (promotions.length > 0) {
-    effects.promotionRank = promotions[promotions.length - 1];
-    effects.promotionTimer = PROMOTION_SECONDS;
-    effects.smileTimer = PROMOTION_SECONDS;
-  }
-
-  game.onRepaired(panel, faultType, promotions);
+  game.onRepaired(panel, faultType);
 }
 
 const HANDLERS = {
@@ -230,6 +224,29 @@ const HANDLERS = {
   storage: {
     prompt: (obj) => `${KEY_HINT}${STORAGES[obj.storage].name} 열기`,
     interact: (obj, game) => game.openStorage(obj.storage),
+  },
+
+  leak: {
+    prompt: () => `${KEY_HINT}누르고 있으면 누수 배관 교체`,
+
+    interact(leak, game) {
+      if (!ready(game, 'pipeReplace')) return;
+      const { state } = game;
+      game.startWork({
+        target: leak,
+        seconds: PIPE_REPLACE_SECONDS,
+        label: '누수 배관 교체 중',
+        onComplete: () => {
+          consumeTask(state, 'pipeReplace');
+          completeRepair(state.progress, 'leak');
+          game.world.removeLeak(leak);
+          state.effects.okTimer = OK_SECONDS;
+          state.effects.smileTimer = SMILE_SECONDS;
+          game.showMessage('누수 배관 교체 완료', COLOR.GOOD);
+          game.onRepaired(leak, 'leak');
+        },
+      });
+    },
   },
 
   hmi: inspectionPoint,

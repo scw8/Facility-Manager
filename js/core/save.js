@@ -2,7 +2,7 @@
 // 나중에 서버 저장으로 바꿀 때는 이 파일의 readRaw/writeRaw만 바꾸면 된다.
 
 const SAVE_KEY = 'facility-manager/save';
-const SAVE_VERSION = 7; // 저장 형식이 바뀌면 올린다. 옛 형식은 버리고 새로 시작한다.
+const SAVE_VERSION = 8; // 저장 형식이 바뀌면 올린다. 옛 형식은 버리고 새로 시작한다.
 
 // 저장 공간이 막힌 환경(사생활 보호 모드 등)에서도 게임은 계속 돌아가야 한다
 function readRaw() {
@@ -66,7 +66,9 @@ function snapshot(state, world) {
     shift: state.shift,
     screen: state.screen,
     nextFaultTimer: state.nextFaultTimer,
+    nextLeakTimer: state.nextLeakTimer,
     panels,
+    leaks: world.saveLeaks(),
   };
 }
 
@@ -111,7 +113,9 @@ export function loadGame(state, world) {
   Object.assign(state.shift, data.shift);
   state.screen = data.screen ?? null;
   state.nextFaultTimer = data.nextFaultTimer;
+  state.nextLeakTimer = data.nextLeakTimer ?? 60;
 
+  world.loadLeaks(data.leaks);
   for (const [fullKey, [panelState, faultType, since, penalty]] of Object.entries(data.panels || {})) {
     const [mapId, key] = fullKey.split(':');
     const obj = world.maps.get(mapId)?.objects.get(key);

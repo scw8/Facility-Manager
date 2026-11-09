@@ -19,7 +19,14 @@ import {
   shiftMinute,
   SHIFT_START,
 } from './core/clock.js';
-import { createProgress, expPercent, isTopRank, addExp, RANKS, FAULT_EXP } from './systems/progress.js';
+import {
+  createProgress,
+  addExp,
+  monthlyReview,
+  promotionStatus,
+  RANKS,
+  FAULT_EXP,
+} from './systems/progress.js';
 import {
   createInspection,
   applyInspectionToWorld,
@@ -58,6 +65,7 @@ import { createBag, capacity, selectSlot, cycleSlot, toggleItem, hasItem } from 
 import { SALARY, START_MONEY, SHOP_ITEMS, owns, buy, formatWon, isPayday } from './systems/economy.js';
 import { ITEMS, STORAGES } from '../data/items.js';
 import { INTRO_PAGES, TIPS, currentObjective } from './systems/guide.js';
+import { withDirection } from './core/korean.js';
 import { createRenderer } from './render/renderer.js';
 import {
   createTextLayer,
@@ -78,6 +86,10 @@ const INITIAL_FAULTS = 2;
 // 고장을 전부 처리한 뒤 새 고장까지 걸리는 게임 시간(분) [초기값]
 const NEXT_FAULT_MINUTES = 40;
 const NEXT_FAULT_MINUTES_NIGHT = 120; // 22:00~06:00
+// 배관 누수는 분전반 고장과 따로, 근무 중 틈틈이 터진다 [초기값]
+const LEAK_MINUTES = [60, 150]; // 다음 누수까지 (낮) 최소~최대
+const LEAK_MINUTES_NIGHT = [180, 300];
+const MAX_LEAKS = 2; // 동시에 있을 수 있는 누수 수
 const FAST_REPAIR_MINUTES = 60; // 이 안에 고치면 평판 가산
 const NEGLECT_MINUTES = 120; // 고장을 이만큼 방치할 때마다 평판 감점
 const AUTOSAVE_SECONDS = 5;
@@ -123,6 +135,7 @@ const state = {
   work: null, // 진행 중인 작업 게이지
   time: 0,
   nextFaultTimer: 0, // 게임 분
+  nextLeakTimer: 0, // 게임 분
   lastRepaired: null,
   prompt: null,
   transition: null,
@@ -143,7 +156,7 @@ function createShiftLog() {
   return {
     repairs: 0,
     exp: 0,
-    promotions: [],
+    promotion: null, // 월말 인사발령으로 오른 직급 이름
     meals: [], // 'lunch' | 'dinner'
     showered: false,
     neglected: 0, // 고장 방치로 감점된 횟수
@@ -163,6 +176,13 @@ function showMessage(text, color = COLOR.INFO, seconds = 2.5) {
   effects.message = text;
   effects.messageColor = color;
   effects.messageTimer = seconds;
+}
+
+const panelFaultCount = () => world.faults().filter((f) => f.type === 'panel').length;
+
+function nextLeakDelay() {
+  const [min, max] = isBetween(state.clock, '22:00', '06:00') ? LEAK_MINUTES_NIGHT : LEAK_MINUTES;
+  return min + Math.random() * (max - min);
 }
 
 function nextFaultDelay() {
@@ -191,15 +211,15 @@ const game = {
     state.inspecting = key;
     openScreen('inspect');
   },
-  onRepaired(panel, faultType, promotions) {
+  onRepaired(panel, faultType) {
     const { shift, stats } = state;
     shift.repairs += 1;
     shift.exp += FAULT_EXP[faultType];
-    shift.promotions.push(...promotions);
     applyEffect(stats, EFFECTS.repair);
     const waited = absoluteMinutes(state.clock) - panel.faultSince;
     applyEffect(stats, waited <= FAST_REPAIR_MINUTES ? EFFECTS.repairFast : EFFECTS.repairSlow);
-    if (world.countFaults() === 0) state.nextFaultTimer = nextFaultDelay();
+    // 분전반이 하나도 고장 나 있지 않으면 다음 누전을 예약한다
+    if (panelFaultCount() === 0 && state.nextFaultTimer <= 0) state.nextFaultTimer = nextFaultDelay();
   },
 };
 
@@ -231,7 +251,7 @@ function finishInspection(countUnfinished) {
   }
   shift.inspection = result;
   shift.exp += result.exp;
-  shift.promotions.push(...addExp(state.progress, result.exp));
+  addExp(state.progress, result.exp);
   applyEffect(stats, { reputation: result.reputation, stress: result.stress });
 
   if (result.missed) shift.notes.push(`검침: 놓친 이상 ${result.missed}곳 (평판 ${result.missed * SCORE.missed.reputation})`);
@@ -240,12 +260,13 @@ function finishInspection(countUnfinished) {
   if (result.notDone) shift.notes.push(`검침 미완료 (평판 ${SCORE.notDone.reputation})`);
 }
 
-// 그 달의 마지막 근무면 월급을 받는다
+// 그 달의 마지막 근무면 월급을 받고 인사발령을 받는다
 function payday() {
   const { shift } = state;
   if (shift.pay || !isPayday(state.clock.day)) return;
   shift.pay = SALARY[state.progress.rank];
   state.money += shift.pay;
+  shift.promotion = monthlyReview(state.progress);
 }
 
 function endShift() {
@@ -323,7 +344,8 @@ function commute() {
     panel.faultSince = now;
     panel.lastPenalty = now;
   }
-  if (world.countFaults() === 0) state.nextFaultTimer = NEXT_FAULT_MINUTES;
+  if (panelFaultCount() === 0) state.nextFaultTimer = NEXT_FAULT_MINUTES;
+  state.nextLeakTimer = nextLeakDelay();
 
   state.inspection = createInspection(world, state.clock.day);
   applyInspectionToWorld(state.inspection, world);
@@ -540,17 +562,18 @@ function screenContent(kind) {
   const subtitle = formatDate(clock.day);
 
   if (kind === 'report') {
-    const promoted = shift.promotions.length > 0;
-    const exp = isTopRank(progress) ? 'MAX' : `${expPercent(progress)}%`;
+    const status = promotionStatus(progress);
+    let rankLine = `직급: ${RANKS[progress.rank]}`;
+    if (shift.promotion) rankLine = `인사발령: ${withDirection(shift.promotion)} 승진!`;
+    else if (status) {
+      rankLine += ` · 승진 조건 경험치 ${status.exp}/${status.expNeed}, 근속 ${status.months}/${status.monthsNeed}개월`;
+    }
     const repStart = Math.round(shift.reputationStart);
     const repNow = Math.round(stats.reputation);
     const insp = shift.inspection;
     const lines = [
       { text: `처리 ${shift.repairs}건 · 경험치 +${shift.exp}` },
-      {
-        text: `직급: ${RANKS[progress.rank]} (EXP ${exp})${promoted ? ` · 승진! ${shift.promotions.join(' → ')}` : ''}`,
-        color: promoted ? '#9a6a00' : undefined,
-      },
+      { text: rankLine, color: shift.promotion ? '#9a6a00' : undefined, size: shift.promotion ? 8 : 6 },
       {
         text: insp ? `검침: ${insp.total}곳 중 ${insp.correct}곳 정확 판정` : '검침: 기록 없음',
         color: insp && insp.correct < insp.total ? '#a83020' : undefined,
@@ -786,16 +809,27 @@ function updatePlayer(dt) {
 function updateFaults(minutes) {
   const now = absoluteMinutes(state.clock);
 
+  const alert = (text) => {
+    if (state.clock.skip?.resting) {
+      cancelSkip(state.clock);
+      showMessage(`${text} 휴식을 중단합니다`, COLOR.ALERT, 3);
+    } else {
+      showMessage(text, COLOR.ALERT, 3);
+    }
+  };
+
   if (state.nextFaultTimer > 0) {
     state.nextFaultTimer -= minutes;
     if (state.nextFaultTimer <= 0 && world.spawnFault(state.lastRepaired, now)) {
-      if (state.clock.skip?.resting) {
-        cancelSkip(state.clock);
-        showMessage('고장 발생! 휴식을 중단합니다', COLOR.ALERT, 3);
-      } else {
-        showMessage('새 고장 발생! 미니맵을 확인하세요', COLOR.ALERT);
-      }
+      alert('분전반 누전 발생! (미니맵 빨간 점)');
     }
+  }
+
+  state.nextLeakTimer -= minutes;
+  if (state.nextLeakTimer <= 0) {
+    state.nextLeakTimer = nextLeakDelay();
+    const leaks = world.faults().filter((f) => f.type === 'leak').length;
+    if (leaks < MAX_LEAKS && world.spawnLeak(now)) alert('지하 1층 배관 누수 발생! (미니맵 파란 점)');
   }
 
   // 오래 방치된 고장은 평판을 깎는다
@@ -927,7 +961,7 @@ document.getElementById('reset-btn').addEventListener('click', (e) => {
 if (loadGame(state, world)) {
   applyInspectionToWorld(state.inspection, world);
   // 고장이 하나도 없고 다음 고장 예약도 없으면 일거리가 끊기므로 다시 예약한다
-  if (world.countFaults() === 0 && state.nextFaultTimer <= 0) {
+  if (panelFaultCount() === 0 && state.nextFaultTimer <= 0) {
     state.nextFaultTimer = nextFaultDelay();
   }
   if (!state.screen) showMessage('이어서 진행합니다', COLOR.INFO, 3);

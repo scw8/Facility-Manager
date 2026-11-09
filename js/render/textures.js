@@ -587,6 +587,16 @@ function paintShelf(put, rect) {
   rect(14, 22, 12, 7, 180, 140, 90);
 }
 
+// 누수 중인 배관벽: 이음부에서 물방울이 떨어지고 아래가 젖어 있다
+function paintPipesLeak(put, rect) {
+  paintPipes(put, rect);
+  rect(9, 13, 3, 2, 110, 170, 220); // 가스배관 아래로 맺힌 물
+  for (const [x, y] of [[10, 15], [11, 17], [10, 19], [24, 26], [25, 28]]) rect(x, y, 1, 2, 130, 190, 240);
+  rect(20, 27, 9, 5, 50, 80, 120); // 젖은 벽
+  rect(4, 30, 26, 2, 60, 110, 170); // 바닥 물 고임
+  rect(8, 30, 6, 1, 150, 200, 240);
+}
+
 const LAMP_RED_ON = [255, 40, 30];
 const LAMP_OFF = [70, 74, 70];
 const LAMP_GREEN = [60, 255, 110];
@@ -616,6 +626,7 @@ export const TEXTURES = {
   [TILE.GENERATOR]: [createTexture(paintGenerator, WEAR.device)],
   [TILE.PIT]: [createTexture((p, r) => paintPit(p, r, false), WEAR.device)],
   pitLeak: createTexture((p, r) => paintPit(p, r, true), WEAR.device),
+  pipesLeak: createTexture(paintPipesLeak, WEAR.pipes),
   [TILE.TOOLWALL]: [createTexture(paintToolWall, WEAR.device)],
   [TILE.TOOLBOX]: [createTexture(paintToolbox, WEAR.device)],
   [TILE.SHELF]: [createTexture(paintShelf, WEAR.device)],

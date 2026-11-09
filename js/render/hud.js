@@ -2,7 +2,7 @@
 // 그림은 저해상도 화면(view)에, 글자는 고해상도 층(hud-text)에 그린다.
 // 두 층 모두 좌표는 320×200 기준이다.
 
-import { RANKS, expPercent, isTopRank } from '../systems/progress.js';
+import { RANKS, expPercent, isTopRank, promotionStatus } from '../systems/progress.js';
 import { transitionAlpha } from '../core/transition.js';
 import { formatTime, formatDate, isBetween, isSkipping } from '../core/clock.js';
 import { LIMITS } from '../systems/stats.js';
@@ -194,7 +194,7 @@ function drawLcdText(ctx, str, centerX, y, color) {
 function drawMultimeter(ctx, bob, showOk, lift) {
   const w = 52;
   const x = Math.round(SCREEN_W / 2 - w / 2 + Math.sin(bob) * 3);
-  const y = Math.round(150 - Math.abs(Math.cos(bob)) * 3 - lift);
+  const y = Math.round(132 - Math.abs(Math.cos(bob)) * 3 - lift);
   const h = SCREEN_H - y + 4;
   const rect = (color, rx, ry, rw, rh) => {
     ctx.fillStyle = color;
@@ -221,24 +221,112 @@ function drawMultimeter(ctx, bob, showOk, lift) {
   rect('#c8261e', 7, 38, 5, 5);
   rect('#111', 40, 38, 5, 5);
 
-  // 쥔 손
-  rect('#000', -9, 26, 11, h);
-  rect('#c99468', -8, 27, 9, h);
-  rect('#000', w - 2, 26, 11, h);
-  rect('#c99468', w - 1, 27, 9, h);
+  // 양손으로 옆을 쥔다
+  drawFist(ctx, x - 14, y + 22, true);
+  drawFist(ctx, x + w - 6, y + 22, false);
 }
 
 // ----- 손에 든 아이템 -----
 
+// 오른손 주먹 (손등이 보이고, 위쪽은 너클, 왼쪽에서 엄지가 손잡이를 감싼다). 20×16 + 소매
+const FIST = [
+  '....KKKKKKKKKKKK....',
+  '...KHHSKHHSKHHSKK...',
+  '..KHSSMKSSMKSSMKSK..',
+  '..KSSSMKSSMKSSMKSMK.',
+  '.KSSSSSSSSSSSSSSSMK.',
+  '.KHSSSSSSSSSSSSSSMMK',
+  'KNHSSSSSSSSSSSSSSMMK',
+  'KSSSSSSSSSSSSSSSMMMK',
+  'KSSMSSSSSSSSSSSSMMDK',
+  '.KSMMSSSSSSSSSSMMMDK',
+  '.KKMMSSSSSSSSSSMMDK.',
+  '..KSSMSSSSSSSSMMDDK.',
+  '..KSSSSSSSSSSSMMDK..',
+  '...KSSSSSSSSSMMDDK..',
+  '...KSSSSSSSSSMMDK...',
+  '...KMSSSSSSSSMMDK...',
+];
+const FIST_COLORS = {
+  K: '#2a1a12', // 윤곽
+  H: '#e2b08a', // 밝은 살
+  S: '#c99468', // 살
+  M: '#a8764e', // 그늘
+  D: '#7e5436', // 짙은 그늘
+  N: '#efd2bc', // 손톱
+};
+
+// 주먹과 그 아래 작업복 소매를 그린다. mirror면 왼손
+function drawFist(ctx, x, y, mirror = false) {
+  const width = FIST[0].length;
+  FIST.forEach((row, j) => {
+    [...row].forEach((cell, i) => {
+      if (cell === '.') return;
+      ctx.fillStyle = FIST_COLORS[cell];
+      ctx.fillRect(x + (mirror ? width - 1 - i : i), y + j, 1, 1);
+    });
+  });
+  // 소매: 남색 작업복 + 반사띠
+  const top = y + FIST.length;
+  const sx = x + 1;
+  const sw = width - 2;
+  ctx.fillStyle = '#121826';
+  ctx.fillRect(sx - 1, top, sw + 2, SCREEN_H - top);
+  ctx.fillStyle = '#2c3a58';
+  ctx.fillRect(sx, top, sw, SCREEN_H - top);
+  ctx.fillStyle = '#1e2840';
+  ctx.fillRect(mirror ? sx : sx + sw - 4, top, 4, SCREEN_H - top);
+  ctx.fillStyle = '#5a6a88';
+  ctx.fillRect(sx, top, sw, 2); // 소맷부리
+  ctx.fillStyle = '#c8ccd0';
+  ctx.fillRect(sx, top + 4, sw, 2); // 반사띠
+}
+
+// 한 손으로 든 아이템: 아이콘을 3배로 그리고 아래쪽 손잡이를 주먹이 감싼다
 function drawHeldItem(ctx, id, bob, lift) {
-  const x = Math.round(SCREEN_W / 2 - 24 + Math.sin(bob) * 3);
-  const y = Math.round(128 - Math.abs(Math.cos(bob)) * 3 - lift);
-  // 쥔 손
-  ctx.fillStyle = '#000';
-  ctx.fillRect(x + 13, y + 38, 22, SCREEN_H - y - 38);
-  ctx.fillStyle = '#c99468';
-  ctx.fillRect(x + 14, y + 39, 20, SCREEN_H - y - 39);
-  drawIcon(ctx, id, x, y, 4);
+  const x = Math.round(SCREEN_W / 2 + 6 + Math.sin(bob) * 3);
+  const y = Math.round(112 - Math.abs(Math.cos(bob)) * 3 - lift);
+  drawIcon(ctx, id, x, y, 3);
+  drawFist(ctx, x + 4, y + 26);
+}
+
+// 손과 든 물건을 따로 그린 뒤, 화면 속 조명처럼 어둡게 하고 거친 질감을 입혀
+// 배경 텍스처와 화질이 따로 놀지 않게 한다.
+const VIEW_MODEL = { x: 80, y: 100, w: 160, h: SCREEN_H - 100 };
+const viewModelCanvas = document.createElement('canvas');
+viewModelCanvas.width = VIEW_MODEL.w;
+viewModelCanvas.height = VIEW_MODEL.h;
+const viewModelCtx = viewModelCanvas.getContext('2d');
+
+function grainAt(x, y) {
+  const n = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+  return ((n % 1000) / 1000 - 0.5) * 0.22; // ±11%
+}
+
+function drawViewModel(ctx, held, bob, showOk, lift) {
+  const vm = viewModelCtx;
+  vm.setTransform(1, 0, 0, 1, 0, 0);
+  vm.clearRect(0, 0, VIEW_MODEL.w, VIEW_MODEL.h);
+  vm.setTransform(1, 0, 0, 1, -VIEW_MODEL.x, -VIEW_MODEL.y);
+  if (held === 'tester') drawMultimeter(vm, bob, showOk, lift);
+  else drawHeldItem(vm, held, bob, lift);
+
+  const image = vm.getImageData(0, 0, VIEW_MODEL.w, VIEW_MODEL.h);
+  const px = image.data;
+  for (let j = 0; j < VIEW_MODEL.h; j++) {
+    // 아래로 갈수록 화면 밖이라 더 어둡다
+    const light = 0.84 - (j / VIEW_MODEL.h) * 0.22;
+    for (let i = 0; i < VIEW_MODEL.w; i++) {
+      const k = (j * VIEW_MODEL.w + i) * 4;
+      if (px[k + 3] === 0) continue;
+      const f = light * (1 + grainAt(i, j));
+      px[k] *= f;
+      px[k + 1] *= f;
+      px[k + 2] *= f;
+    }
+  }
+  vm.putImageData(image, 0, 0);
+  ctx.drawImage(viewModelCanvas, VIEW_MODEL.x, VIEW_MODEL.y);
 }
 
 // ----- 아이템 슬롯 -----
@@ -281,8 +369,7 @@ export function drawHudGraphics(ctx, state, map) {
 
   const held = heldItem(state);
   const lift = effects.okTimer > 0 ? 5 : 0;
-  if (held === 'tester') drawMultimeter(ctx, player.walked * 3.2, effects.okTimer > 0, lift);
-  else if (held) drawHeldItem(ctx, held, player.walked * 3.2, lift);
+  if (held) drawViewModel(ctx, held, player.walked * 3.2, effects.okTimer > 0, lift);
   drawSlots(ctx, state);
 
   drawFace(ctx, FACE_X, FACE_Y, effects.smileTimer > 0);
@@ -339,6 +426,9 @@ export function drawHudGraphics(ctx, state, map) {
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
   }
 }
+
+let lastHeld = null;
+let heldNameUntil = 0;
 
 export function drawHudText(layer, state, map) {
   const { progress, effects, clock, prompt, transition } = state;
@@ -403,9 +493,14 @@ export function drawHudText(layer, state, map) {
     layer.text(prompt, SCREEN_W / 2, 118, { align: 'center', color: '#ffe046' });
   }
 
+  // 아이템을 바꾼 직후에만 이름을 잠깐 보여준다
   const held = heldItem(state);
-  if (held) {
-    layer.text(itemName(held), SCREEN_W / 2, SCREEN_H - 24, { align: 'center', size: HUD_FONT_SIZE_SMALL });
+  if (held !== lastHeld) {
+    lastHeld = held;
+    heldNameUntil = state.time + 1.5;
+  }
+  if (held && state.time < heldNameUntil) {
+    layer.text(itemName(held), SCREEN_W / 2, SCREEN_H - 26, { align: 'center', size: HUD_FONT_SIZE_SMALL });
   }
 
   // 좌측 하단 캐릭터 상태 묶음
@@ -422,6 +517,12 @@ export function drawHudText(layer, state, map) {
       size: 5,
     });
   });
-  const expLabel = isTopRank(progress) ? 'EXP MAX' : `EXP ${expPercent(progress)}%`;
+  const status = promotionStatus(progress);
+  let expLabel = 'EXP MAX';
+  if (status) {
+    expLabel = status.exp >= status.expNeed
+      ? `승진 대기 ${status.months}/${status.monthsNeed}개월`
+      : `EXP ${expPercent(progress)}%`;
+  }
   layer.text(expLabel, EXP_BAR.x + EXP_BAR.w + 3, EXP_BAR.y - 1, { color: '#a8f0a8', size: small });
 }

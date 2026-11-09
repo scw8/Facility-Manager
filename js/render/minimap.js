@@ -56,6 +56,7 @@ export function drawMinimap(ctx, map, player, time) {
       const tile = map.tileAt(x, y);
       if (tile === TILE.FLOOR) continue;
       let color = TILE_COLORS[tile];
+      if (map.objectAt(x, y)?.type === 'leak') color = blinkOn ? '#3aa0ff' : '#10305a';
       if (tile === TILE.PANEL) {
         const { state } = map.objectAt(x, y);
         if (state === PANEL_STATE.FIXED) color = '#3cff6e';

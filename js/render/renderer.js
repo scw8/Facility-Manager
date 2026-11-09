@@ -116,6 +116,9 @@ export function createRenderer(ctx) {
     if (hit.tile === TILE.PIT && map.objectAt(hit.cellX, hit.cellY).leaking) {
       return TEXTURES.pitLeak;
     }
+    if (hit.tile === TILE.PIPES && map.objectAt(hit.cellX, hit.cellY)?.type === 'leak') {
+      return TEXTURES.pipesLeak;
+    }
     if (hit.tile !== TILE.PANEL) {
       const themed = hit.tile === TILE.CONCRETE && map.theme.wall;
       const variants = themed ? TEXTURES[map.theme.wall] : TEXTURES[hit.tile];
